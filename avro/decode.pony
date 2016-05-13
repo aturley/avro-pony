@@ -2,7 +2,9 @@ use "net"
 use "collections"
 
 type AvroType is (None | Bool | I32 | I64 | F32 | F64 | Array[U8 val] val | String |
-                  Record val) // | AvroItemEnum | AvroArray | AvroMap)
+                  Record val | EnumSymbol val | AvroArray val) // | AvroItemEnum | AvroArray | AvroMap)
+
+interface EnumSymbol
 
 class Record
   let _fields: Array[AvroType] val
@@ -10,6 +12,13 @@ class Record
     _fields = fields
   fun apply(fieldIdx: USize): AvroType val ? =>
     _fields(fieldIdx)
+
+class AvroArray
+  let _array: Array[AvroType] val
+  new create(array: Array[AvroType] val) =>
+    _array = array
+  fun apply(idx: USize): AvroType val ? =>
+    _array(idx)
 
 interface Decoder
   fun ref decode(buffer: ReadBuffer): AvroType val ?
@@ -108,6 +117,41 @@ class RecordDecoder is Decoder
        record.push(decoder.decode(buffer))
     end
     recover Record(consume record) end
+
+class EnumDecoder is Decoder
+  let _long_decoder: LongDecoder = LongDecoder
+  let _enum_symbols: Array[EnumSymbol val] val
+  new ref create(enum_symbols: Array[EnumSymbol val] val) =>
+    _enum_symbols = enum_symbols
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    let idx = (_long_decoder.decode(buffer) as I64).usize()
+    _enum_symbols(idx)
+
+class ArrayDecoder
+  let _long_decoder: LongDecoder = LongDecoder
+  let _decoder: Decoder
+  new ref create(decoder: Decoder) =>
+    _decoder = decoder
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    let array = recover Array[AvroType val] end
+    while true do
+      let len = _long_decoder.decode(buffer) as I64
+      match len
+      | let l: I64 if l > 0 =>
+        for i in Range(0, len.usize()) do
+          array.push(_decoder.decode(buffer))
+        end
+        break
+      | let l: I64 if l < 0 =>
+        let blocks = _long_decoder.decode(buffer) as I64
+        for i in Range(0, -(len.usize())) do
+          array.push(_decoder.decode(buffer))
+        end
+      else
+        break
+      end
+    end
+    consume array
 
 // 
 // class FixedDecoder

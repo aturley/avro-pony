@@ -16,6 +16,7 @@ actor Main is TestList
     test(_TestString)
     test(_TestUnion)
     test(_TestRecord)
+    test(_TestEnum)
 
 class iso _TestNone is UnitTest
   fun name(): String => "avro/NoneDecoder"
@@ -127,3 +128,18 @@ class iso _TestRecord is UnitTest
     let record = record_decoder.decode(rb_record) as Record val
     h.assert_eq[I32](1, record(0) as I32)
     h.assert_eq[String]("abc", record(1) as String)
+
+primitive EnumZero is EnumSymbol
+primitive EnumOne is EnumSymbol
+primitive EnumTwo is EnumSymbol
+
+class iso _TestEnum is UnitTest
+  fun name(): String => "avro/EnumDecoder"
+  fun apply(h: TestHelper) ? =>
+    let data = recover [as U8: 0x02] end // 1 (EnumOne)
+    let rb_enum = ReadBuffer.append(consume data)
+    let enum_decoder = EnumDecoder(recover [as EnumSymbol val: EnumZero, EnumOne, EnumTwo] end)
+    let enum_symbol = enum_decoder.decode(rb_enum) as EnumSymbol val
+    if enum_symbol isnt EnumOne then
+      h.fail("enum_symbol isn't EnumOne")
+    end
