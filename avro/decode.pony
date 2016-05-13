@@ -1,45 +1,33 @@
 use "net"
 use "collections"
 
-class AvroDecoder
-  let _read_buffer: Buffer
-  new create(read_buffer: Buffer) =>
-    _read_buffer = read_buffer
-  fun null(): None =>
-    None
-  fun ref boolean(): Bool ? =>
-    _read_buffer.u8() != 0
-  fun ref int(): I32 ? =>
-    var acc: I32 = 0
-    var b = _read_buffer.u8().i32()
-    repeat
-      acc = (acc << 8) + (b >> 1)
-    until (b and 0x80) == 0 end
-    acc
-  fun ref long(): I64 ? =>
-    var acc: I64 = 0
-    var b = _read_buffer.u8().i64()
-    repeat
-      acc = (acc << 8) + (b >> 1)
-    until (b and 0x80) == 0 end
-    acc
-  fun ref float(): F32 ? =>
-    _read_buffer.f32_le()
-  fun ref double(): F64 ? =>
-    _read_buffer.f64_le()
-  fun ref bytes(): Array[U8] val ? =>
-    var len = int().usize()
-    _read_buffer.block(len)
-  fun ref string(): String val ? =>
-    var len = int().usize()
-    let b = _read_buffer.block(len)
-    String.from_array(consume b)
-  fun ref union(readers: Array[{(): Any val} ref]): Any val ? =>
-    var opt = int().usize()
-    readers(opt)()
+type AvroType is (None | Bool | I32 | I64 | F32 | F64 | Array[U8 val] val | String |
+                  Record val) // | AvroItemEnum | AvroArray | AvroMap)
 
-class VarIntDecoder
-  fun ref read(buffer: Buffer): I64 val ? =>
+class Record
+  let _fields: Array[AvroType] val
+  new create(fields: Array[AvroType] val) =>
+    _fields = fields
+  fun apply(fieldIdx: USize): AvroType val ? =>
+    _fields(fieldIdx)
+
+interface Decoder
+  fun ref decode(buffer: ReadBuffer): AvroType val ?
+
+class NoneDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val =>
+    None
+
+class BooleanDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    buffer.u8() != 0
+
+class _VarIntDecoder is Decoder
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
     var acc: I64 = 0
     var shift: I64 = 0
 
@@ -60,43 +48,115 @@ class VarIntDecoder
       (acc >> 1)
     end
 
-interface Decoder[A]
-  fun ref read(buffer: Buffer): A ?
+class IntDecoder is Decoder
+  let _var_int_decoder: _VarIntDecoder = _VarIntDecoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    (_var_int_decoder.decode(buffer) as I64).i32()
 
-class IntDecoder[A: I32 val = I32 val]
-  let _var_int_decoder: VarIntDecoder = VarIntDecoder
-  fun ref read(buffer: Buffer): A ? =>
-    (_var_int_decoder.read(buffer) as I64).i32()
+class LongDecoder is Decoder
+  let _var_int_decoder: _VarIntDecoder = _VarIntDecoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    _var_int_decoder.decode(buffer) as I64
 
-class LongDecoder[A: I64 val = I64 val]
-  let _var_int_decoder: VarIntDecoder = VarIntDecoder
-  fun ref read(buffer: Buffer): A ? =>
-    _var_int_decoder.read(buffer) as I64
+class FloatDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    buffer.f32_be()
 
-class StringDecoder[A: String val = String val]
-  fun ref read(buffer: Buffer): A ? =>
-    var len = LongDecoder.read(buffer).usize()
+class DoubleDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    buffer.f64_be()
+
+class BytesDecoder is Decoder
+  let _var_int_decoder: _VarIntDecoder = _VarIntDecoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    let len = (LongDecoder.decode(buffer) as I64).usize()
+    buffer.block(len)
+
+class StringDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    var len = (LongDecoder.decode(buffer) as I64).usize()
     let b = buffer.block(len)
     String.from_array(consume b)
 
-class UnionDecoder[A, B: Decoder[A]]
-  let _readers: Array[B]
-  new ref create(readers: Array[B]) =>
-    _readers = readers
-  fun ref read(buffer: Buffer): A ? =>
-    var opt = (LongDecoder.read(buffer) as I64).usize()
-    _readers(opt).read(buffer)
+class UnionDecoder is Decoder
+  let _decoders: Array[Decoder]
+  new ref create(decoders: Array[Decoder]) =>
+    _decoders = decoders
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    var opt = (LongDecoder.decode(buffer) as I64).usize()
+    _decoders(opt).decode(buffer)
 
+class RecordDecoder is Decoder
+  let _decoders: Array[Decoder]
+  new ref create(decoders: Array[Decoder]) =>
+    _decoders = decoders
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    let record: Array[AvroType val] iso = recover Array[AvroType val] end
+    for decoder in _decoders.values() do
+       record.push(decoder.decode(buffer))
+    end
+    recover Record(consume record) end
+
+// 
+// class FixedDecoder
+//   let _len: USize
+//   new ref create(len: USize) =>
+//     _len = len
+//   fun ref read(buffer: Buffer): Any val ? =>
+//     buffer.block(_len)
+// 
+// class StringDecoder
+//   fun ref read(buffer: Buffer): Any val ? =>
+//     var len = (LongDecoder.read(buffer) as I64).usize()
+//     let b = buffer.block(len)
+//     String.from_array(consume b)
+// 
+// class UnionDecoder
+//   let _readers: Array[Decoder]
+//   new ref create(readers: Array[Decoder]) =>
+//     _readers = readers
+//   fun ref read(buffer: Buffer): Any val ? =>
+//     var opt = (LongDecoder.read(buffer) as I64).usize()
+//     _readers(opt).read(buffer)
+// 
 // class RecordDecoder
 //   let _readers: Array[Decoder]
 //   new ref create(readers: Array[Decoder]) =>
 //     _readers = readers
 //   fun ref read(buffer: Buffer): Any val ? =>
-//     let record: Array[Any] iso = recover Array[Any] end
+//     let record: Array[Any val] iso = recover Array[Any val] end
 //     for (idx, reader) in _readers.pairs() do
 //       record.push(reader.read(buffer))
 //     end
 //     consume record
+// 
+// class EnumDecoder
+//   let _types: Array[String val] val
+//   new ref create(types: Array[String val] val) =>
+//     _types = types
+//   fun ref read(buffer: Buffer): Any val ? =>
+//     let ld: LongDecoder ref = LongDecoder
+//     _types((ld.read(buffer) as I64).usize())
+// 
+// class TypeEnumDecoder
+//   let _types: Array[Any val] val
+//   new ref create(types: Array[Any val] val) =>
+//     _types = types
+//   fun ref read(buffer: Buffer): Any val ? =>
+//     let ld: LongDecoder ref = LongDecoder
+//     _types((ld.read(buffer) as I64).usize())
 // 
 // class ArrayDecoder
 //   let _reader: Decoder
@@ -104,7 +164,7 @@ class UnionDecoder[A, B: Decoder[A]]
 //     _reader = reader
 //   fun ref read(buffer: Buffer): Any val ? =>
 //     let ld: LongDecoder ref = LongDecoder
-//     let array = recover Array[Any] end
+//     let array = recover Array[Any val] end
 //     while true do
 //       let len = ld.read(buffer) as I64
 //       match len
@@ -112,12 +172,19 @@ class UnionDecoder[A, B: Decoder[A]]
 //         for i in Range(0, len.usize()) do
 //           array.push(_reader.read(buffer))
 //         end
+//         break
 //       | let l: I64 if l < 0 =>
+//         @printf[U32]("reading bytes\n".cstring())
 //         let blocks = ld.read(buffer) as I64
+//         @printf[U32]("read bytes\n".cstring())
+//         @printf[U32]("len is (%d)\n".cstring(), len)
 //         for i in Range(0, -(len.usize())) do
+//           @printf[U32]("pushing\n".cstring())
 //           array.push(_reader.read(buffer))
+//           @printf[U32]("pushed\n".cstring())
 //         end
 //       else
+//         @printf[U32]("break\n".cstring())
 //         break
 //       end
 //     end
@@ -130,7 +197,7 @@ class UnionDecoder[A, B: Decoder[A]]
 //   fun ref read(buffer: Buffer): Any val ? =>
 //     let ld: LongDecoder ref = LongDecoder
 //     let sd: StringDecoder ref = StringDecoder
-//     let map = recover Map[String, Any] end
+//     let map = recover Map[String val, Any val] end
 //     while true do
 //       let len = ld.read(buffer) as I64
 //       match len
@@ -140,6 +207,7 @@ class UnionDecoder[A, B: Decoder[A]]
 //           let value = _reader.read(buffer)
 //           map(consume key) = consume value
 //         end
+//         break
 //       | let l: I64 if l < 0 =>
 //         let blocks = ld.read(buffer) as I64
 //         for i in Range(0, -(len.usize())) do
@@ -153,33 +221,94 @@ class UnionDecoder[A, B: Decoder[A]]
 //     end
 //     consume map
 // 
-actor Main
-  new create(env: Env) =>
-    let rb_union = Buffer.append(recover [as U8: 0x02, 0x01, 0x02, 0x03, 0x04, 0x04, 'a', 'b'] end)
-
-    let long_decoder: LongDecoder ref = LongDecoder
-    let string_decoder: StringDecoder ref = StringDecoder
-    let union_readers = [as Decoder[(String | I64)] ref: string_decoder, long_decoder]
-
-    try
-      let x = UnionDecoder[(String | I64)](union_readers).read(rb_union) as I64
-      env.out.print(x.string())
-    else
-      env.out.print("error")
-    end
+// interface Meh
+// primitive Zero is Meh
+// primitive One is Meh
+// primitive Two is Meh
 // 
-//     for i in Range(0, 3) do
-//       try
-//         let x = long_decoder.read(rb_union) as I64
-//         env.out.print(x.string())
-//       else
-//         env.out.print("error")
-//       end
-//     end
+// actor Main
+//   new create(env: Env) =>
+//     let rb_union = Buffer.append(recover [as U8: 0x01, // array of -1 item
+//                                                  0x10, // 16 bytes of data
+//                                                  0x02, 0x01, // union -1
+//                                                  0x02, // 1
+//                                                  0x03, // -2
+//                                                  0x04, // 2
+//                                                  0x04, 'a', 'b', // "ab"
+//                                                  0x00, // end of array
+//                                                  0x04, // map of 2 items
+//                                                  0x06, 'f', 'o', 'o', // "foo"
+//                                                  0x04, // enum "two" (2)
+//                                                  0x06, 'b', 'a', 'r', // "bar"
+//                                                  0x06, // enum "three" (3)
+//                                                  0x00, // enum "zero" (0)
+//                                                  0x06, 0x02, 0x04, 0x00, // 3 bytes
+//                                                  0x01, 0x03, 0x05, // Fixed(3)
+//                                                  0x02 // Meh(1) = One
+//                                                  ] end)
 // 
+//     let long_decoder: LongDecoder ref = LongDecoder
+//     let string_decoder: StringDecoder ref = StringDecoder
+//     let union_readers = [as Decoder: string_decoder, long_decoder]
+// 
+//     let record_readers = [as Decoder: UnionDecoder(union_readers),
+//                                       long_decoder,
+//                                       long_decoder,
+//                                       IntDecoder,
+//                                       string_decoder]
+//     let rd = RecordDecoder(record_readers)
+//     let ad = ArrayDecoder(rd)
+//     let ed = EnumDecoder(recover ["zero", "one", "two", "three"] end)
+//     let ted = TypeEnumDecoder(recover [as Meh val: Zero, One, Two] end)
+//     let md = MapDecoder(ed)
+//     let bd: BytesDecoder ref = BytesDecoder
+//     let fd: FixedDecoder ref = FixedDecoder(3)
 //     try
-//       let x = string_decoder.read(rb_union) as String
-//       env.out.print(x)
+//       let xs = try
+//         ad.read(rb_union) as Array[Any val] val
+//       else
+//         env.out.print("error reading array of record")
+//         error
+//       end
+//       let x = try
+//         xs(0) as Array[Any val] val
+//       else
+//         env.out.print("error getting item 0 of array")
+//         error
+//       end
+//       let y = try
+//         md.read(rb_union) as Map[String, Any val] val
+//       else
+//         env.out.print("error getting map of enum")
+//         error
+//       end
+//       let z = try
+//         ed.read(rb_union) as String
+//       else
+//         env.out.print("error getting enum")
+//         error
+//       end
+//       let bx = bd.read(rb_union) as Array[U8 val] val
+//       let fx = fd.read(rb_union) as Array[U8 val] val
+//       let tx = ted.read(rb_union) as Meh val
+// 
+//       env.out.print((x(0) as I64 val).string())
+//       env.out.print((x(1) as I64 val).string())
+//       env.out.print((x(2) as I64 val).string())
+//       env.out.print((x(3) as I32 val).string())
+//       env.out.print(x(4) as String val)
+//       env.out.print(y("foo") as String val)
+//       env.out.print(y("bar") as String val)
+//       env.out.print(z.string())
+//       env.out.print(bx.size().string())
+//       env.out.print(fx.size().string())
+//       env.out.print(match tx
+//                     | Zero => "zero"
+//                     | One => "one"
+//                     | Two => "two"
+//                     else
+//                       "meh?"
+//                     end)
 //     else
-//       env.out.print("error")
+//       env.out.print("error with data")
 //     end
