@@ -1,35 +1,6 @@
 use "net"
 use "collections"
 
-type AvroType is (None | Bool | I32 | I64 | F32 | F64 | Array[U8 val] val |
-                  String | Record val | EnumSymbol val | AvroArray val |
-                  AvroMap val)
-
-interface EnumSymbol
-
-class Record
-  let _fields: Array[AvroType] val
-  new create(fields: Array[AvroType] val) =>
-    _fields = fields
-  fun apply(fieldIdx: USize): AvroType val ? =>
-    _fields(fieldIdx)
-
-class AvroArray
-  let _array: Array[AvroType] val
-  new create(array: Array[AvroType] val) =>
-    _array = array
-  fun apply(idx: USize): AvroType val ? =>
-    _array(idx)
-  fun size(): USize =>
-    _array.size()
-
-class AvroMap
-  let _map: Map[String val, AvroType val] val
-  new create(map: Map[String val, AvroType val] val) =>
-    _map = map
-  fun apply(key: String): AvroType val ? =>
-    _map(key)
-
 interface Decoder
   fun ref decode(buffer: ReadBuffer): AvroType val ?
 
@@ -46,6 +17,8 @@ class BooleanDecoder is Decoder
     buffer.u8() != 0
 
 class _VarIntDecoder is Decoder
+  new ref create() =>
+    None
   fun ref decode(buffer: ReadBuffer): AvroType val ? =>
     var acc: I64 = 0
     var shift: I64 = 0
@@ -105,7 +78,7 @@ class StringDecoder is Decoder
   new ref create() =>
     None
   fun ref decode(buffer: ReadBuffer): AvroType val ? =>
-    var len = (LongDecoder.decode(buffer) as I64).usize()
+    let len = (LongDecoder.decode(buffer) as I64).usize()
     let b = buffer.block(len)
     String.from_array(consume b)
 
@@ -114,8 +87,9 @@ class UnionDecoder is Decoder
   new ref create(decoders: Array[Decoder]) =>
     _decoders = decoders
   fun ref decode(buffer: ReadBuffer): AvroType val ? =>
-    var opt = (LongDecoder.decode(buffer) as I64).usize()
-    _decoders(opt).decode(buffer)
+    let opt = (LongDecoder.decode(buffer) as I64).usize()
+    let data = _decoders(opt).decode(buffer)
+    recover Union(opt, data) end
 
 class RecordDecoder is Decoder
   let _decoders: Array[Decoder]
@@ -137,7 +111,7 @@ class EnumDecoder is Decoder
     let idx = (_long_decoder.decode(buffer) as I64).usize()
     _enum_symbols(idx)
 
-class ArrayDecoder
+class ArrayDecoder is Decoder
   let _long_decoder: LongDecoder = LongDecoder
   let _decoder: Decoder
   new ref create(decoder: Decoder) =>
@@ -162,7 +136,7 @@ class ArrayDecoder
     end
     recover AvroArray(consume array) end
 
-class MapDecoder
+class MapDecoder is Decoder
   let _long_decoder: LongDecoder = LongDecoder
   let _decoder: Decoder
   new ref create(decoder: Decoder) =>
