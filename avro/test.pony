@@ -2,6 +2,26 @@ use "ponytest"
 use "collections"
 use "net"
 
+primitive _AssertArrayEqU8
+  fun apply(h: TestHelper, a1: Array[U8 val] val, a2: Array[U8 val] val) ? =>
+    if a1.size() != a2.size() then
+      h.fail("Array sizes differ: " + a1.size().string() + " != " +
+             a2.size().string())
+    else
+      for (idx, v) in a1.pairs() do
+        if v != a2(idx) then
+          h.fail("At index " + idx.string() + " " + a1(idx).string() + " != " + a2(idx).string())
+        end
+      end
+    end
+
+primitive _WriteBufferIntoReadBuffer
+  fun apply(wb: WriteBuffer, rb: ReadBuffer) ? =>
+    for x in wb.done().values() do
+      rb.append(x as Array[U8 val] val)
+    end
+
+
 actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
   new make() => None
@@ -9,7 +29,7 @@ actor Main is TestList
     test(_TestVarIntEncoder)
     test(_TestVarIntDecoder)
 
-    test(_TestNoneDecoder)
+    test(_TestNullDecoder)
     test(_TestBooleanDecoder)
     test(_TestIntDecoder)
     test(_TestLongDecoder)
@@ -24,7 +44,7 @@ actor Main is TestList
     test(_TestMapDecoder)
     test(_TestFixedDecoder)
 
-    test(_TestNoneEncoder)
+    test(_TestNullEncoder)
     test(_TestBooleanEncoder)
     test(_TestIntEncoder)
     test(_TestLongEncoder)
@@ -38,6 +58,8 @@ actor Main is TestList
     test(_TestArrayEncoder)
     test(_TestMapEncoder)
     test(_TestFixedEncoder)
+
+    test(_TestSchema)
 
 class iso _TestVarIntEncoder is UnitTest
   fun name(): String => "avro/_VarIntEncoder"
@@ -111,13 +133,13 @@ class iso _TestVarIntDecoder is UnitTest
       end
     end
 
-class iso _TestNoneDecoder is UnitTest
-  fun name(): String => "avro/NoneDecoder"
+class iso _TestNullDecoder is UnitTest
+  fun name(): String => "avro/NullDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let rb_none = ReadBuffer.append(recover Array[U8 val] end) // nothing
-    let none_decoder = NoneDecoder
-    h.assert_eq[None](None, none_decoder.decode(rb_none) as None)
+    let rb_null = ReadBuffer.append(recover Array[U8 val] end) // nothing
+    let null_decoder = NullDecoder
+    h.assert_eq[None](None, null_decoder.decode(rb_null) as None)
 
 class iso _TestBooleanDecoder is UnitTest
   fun name(): String => "avro/BooleanDecoder"
@@ -163,19 +185,6 @@ class iso _TestDoubleDecoder is UnitTest
     let rb_double = ReadBuffer.append(wb_double.done()(0) as Array[U8] val)
     let double_decoder = DoubleDecoder
     h.assert_eq[F64](3.14159, double_decoder.decode(rb_double) as F64)
-
-primitive _AssertArrayEqU8
-  fun apply(h: TestHelper, a1: Array[U8 val] val, a2: Array[U8 val] val) ? =>
-    if a1.size() != a2.size() then
-      h.fail("Array sizes differ: " + a1.size().string() + " != " +
-             a2.size().string())
-    else
-      for (idx, v) in a1.pairs() do
-        if v != a2(idx) then
-          h.fail("At index " + idx.string() + " " + a1(idx).string() + " != " + a2(idx).string())
-        end
-      end
-    end
 
 class iso _TestBytesDecoder is UnitTest
   fun name(): String => "avro/BytesDecoder"
@@ -285,18 +294,18 @@ class iso _TestFixedDecoder is UnitTest
     _AssertArrayEqU8(h, recover [as U8 val: 0x0B, 0x0E, 0x0E, 0x0F] end,
                      fixed_decoder.decode(rb_fixed) as Array[U8 val] val)
 
-class iso _TestNoneEncoder is UnitTest
-  fun name(): String => "avro/NoneEncoder"
+class iso _TestNullEncoder is UnitTest
+  fun name(): String => "avro/NullEncoder"
 
   fun apply(h: TestHelper) ? =>
-    let none_encoder = NoneEncoder
-    let none_decoder = NoneDecoder
+    let null_encoder = NullEncoder
+    let null_decoder = NullDecoder
     let wb: WriteBuffer ref = WriteBuffer
     let rb: ReadBuffer ref = ReadBuffer
     let expected = None
 
-    none_encoder.encode(expected, wb)
-    let actual = none_decoder.decode(rb) as None
+    null_encoder.encode(expected, wb)
+    let actual = null_decoder.decode(rb) as None
     h.assert_eq[None](expected, actual)
 
 class iso _TestBooleanEncoder is UnitTest
@@ -548,3 +557,97 @@ class iso _TestFixedEncoder is UnitTest
     end
     let actual = fixed_decoder.decode(rb) as Array [U8] val
     _AssertArrayEqU8(h, expected, actual)
+
+class iso _TestSchema is UnitTest
+  fun name(): String => "avro/Schema"
+
+  fun apply(h: TestHelper) =>
+    try
+      let schema_string_str = "\"string\""
+      let schema = Schema(schema_string_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected = "hi there"
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+      let actual = decoder.decode(rb)
+      h.assert_eq[String](expected, actual as String)
+    else
+      h.fail("Expected String")
+    end
+
+    try
+      let schema_union_str = """
+        ["null", "string"]
+      """
+      let schema = Schema(schema_union_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected: Union val = recover Union(1, "hello world") end
+
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+      let actual = decoder.decode(rb) as Union val
+      h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
+      h.assert_eq[String](expected.data as String val, actual.data as String val)
+    else
+      h.fail("Expected String")
+    end
+
+    try
+      let schema_record_str = """
+        {"namespace": "example.avro",
+         "type": "record",
+         "name": "User",
+         "fields": [
+           {"name": "name", "type": "string"},
+           {"name": "favorite_number",  "type": ["int", "null"]},
+           {"name": "favorite_color", "type": ["string", "null"]}
+         ]}
+      """
+      let schema = Schema(schema_record_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected: Record val = recover
+        Record(recover
+          [as AvroType: "Andrew",
+                        recover Union(0, I32(15)) end,
+                        recover Union(0, "red") end]
+        end)
+      end
+
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+
+      let actual = decoder.decode(rb) as Record val
+      h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
+
+      let expected_name = expected(0) as String val
+      let actual_name = actual(0) as String val
+      h.assert_eq[String](expected_name, actual_name)
+
+      let expected_number_union = expected(1) as Union val
+      let actual_number_union = actual(1) as Union val
+      h.assert_eq[USize](expected_number_union.selection as USize,
+                         actual_number_union.selection as USize)
+      h.assert_eq[I32](expected_number_union.data as I32,
+                       actual_number_union.data as I32)
+
+      let expected_color_union = expected(2) as Union val
+      let actual_color_union = actual(2) as Union val
+      h.assert_eq[USize](expected_color_union.selection as USize,
+                         actual_color_union.selection as USize)
+      h.assert_eq[String](expected_color_union.data as String,
+                       actual_color_union.data as String)
+    else
+      h.fail("Expected StringEcoder")
+    end

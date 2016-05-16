@@ -4,7 +4,7 @@ use "collections"
 interface Decoder
   fun ref decode(buffer: ReadBuffer): AvroType val ?
 
-class NoneDecoder is Decoder
+class NullDecoder is Decoder
   new ref create() =>
     None
   fun ref decode(buffer: ReadBuffer): AvroType val =>

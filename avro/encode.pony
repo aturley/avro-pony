@@ -4,7 +4,7 @@ use "collections"
 interface Encoder
   fun ref encode(obj: AvroType val, buffer: WriteBuffer) ?
 
-class NoneEncoder is Encoder
+class NullEncoder is Encoder
   new ref create() =>
     None
   fun ref encode(obj: AvroType val, buffer: WriteBuffer) =>
