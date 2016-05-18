@@ -26,47 +26,48 @@ actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
   new make() => None
   fun tag tests(test: PonyTest) =>
-    test(_TestVarIntEncoder)
-    test(_TestVarIntDecoder)
+    // test(_TestVarIntEncoder)
+    // test(_TestVarIntDecoder)
 
-    test(_TestNullDecoder)
-    test(_TestBooleanDecoder)
-    test(_TestIntDecoder)
-    test(_TestLongDecoder)
-    test(_TestFloatDecoder)
-    test(_TestDoubleDecoder)
-    test(_TestBytesDecoder)
-    test(_TestStringDecoder)
-    test(_TestUnionDecoder)
-    test(_TestRecordDecoder)
-    test(_TestEnumDecoder)
-    test(_TestArrayDecoder)
-    test(_TestMapDecoder)
-    test(_TestFixedDecoder)
-    test(_TestLookupDecoder)
-    test(_TestForwardDeclarationDecoder)
+    // test(_TestNullDecoder)
+    // test(_TestBooleanDecoder)
+    // test(_TestIntDecoder)
+    // test(_TestLongDecoder)
+    // test(_TestFloatDecoder)
+    // test(_TestDoubleDecoder)
+    // test(_TestBytesDecoder)
+    // test(_TestStringDecoder)
+    // test(_TestUnionDecoder)
+    // test(_TestRecordDecoder)
+    // test(_TestEnumDecoder)
+    // test(_TestArrayDecoder)
+    // test(_TestMapDecoder)
+    // test(_TestFixedDecoder)
+    // test(_TestLookupDecoder)
+    // test(_TestForwardDeclarationDecoder)
 
-    test(_TestNullEncoder)
-    test(_TestBooleanEncoder)
-    test(_TestIntEncoder)
-    test(_TestLongEncoder)
-    test(_TestFloatEncoder)
-    test(_TestDoubleEncoder)
-    test(_TestBytesEncoder)
-    test(_TestStringEncoder)
-    test(_TestUnionEncoder)
-    test(_TestRecordEncoder)
-    test(_TestEnumEncoder)
-    test(_TestArrayEncoder)
-    test(_TestMapEncoder)
-    test(_TestFixedEncoder)
-    test(_TestLookupEncoder)
-    test(_TestForwardDeclarationEncoder)
+    // test(_TestNullEncoder)
+    // test(_TestBooleanEncoder)
+    // test(_TestIntEncoder)
+    // test(_TestLongEncoder)
+    // test(_TestFloatEncoder)
+    // test(_TestDoubleEncoder)
+    // test(_TestBytesEncoder)
+    // test(_TestStringEncoder)
+    // test(_TestUnionEncoder)
+    // test(_TestRecordEncoder)
+    // test(_TestEnumEncoder)
+    // test(_TestArrayEncoder)
+    // test(_TestMapEncoder)
+    // test(_TestFixedEncoder)
+    // test(_TestLookupEncoder)
+    // test(_TestForwardDeclarationEncoder)
 
-    test(_TestRecursiveLookupEncoderDecoder)
-    test(_TestRecursiveForwardDeclarationEncoderDecoder)
+    // test(_TestRecursiveLookupEncoderDecoder)
+    // test(_TestRecursiveForwardDeclarationEncoderDecoder)
 
-    test(_TestSchema)
+    // test(_TestSchema)
+    test(_TestRecursiveSchema)
 
 class iso _TestVarIntEncoder is UnitTest
   fun name(): String => "avro/_VarIntEncoder"
@@ -590,100 +591,6 @@ class iso _TestFixedEncoder is UnitTest
     let actual = fixed_decoder.decode(rb) as Array [U8] val
     _AssertArrayEqU8(h, expected, actual)
 
-class iso _TestSchema is UnitTest
-  fun name(): String => "avro/Schema"
-
-  fun apply(h: TestHelper) =>
-    try
-      let schema_string_str = "\"string\""
-      let schema = Schema(schema_string_str)
-
-      let encoder = schema.encoder()
-      let decoder = schema.decoder()
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
-      let expected = "hi there"
-      encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
-      let actual = decoder.decode(rb)
-      h.assert_eq[String](expected, actual as String)
-    else
-      h.fail("Expected String")
-    end
-
-    try
-      let schema_union_str = """
-        ["null", "string"]
-      """
-      let schema = Schema(schema_union_str)
-
-      let encoder = schema.encoder()
-      let decoder = schema.decoder()
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
-      let expected: Union val = recover Union(1, "hello world") end
-
-      encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
-      let actual = decoder.decode(rb) as Union val
-      h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
-      h.assert_eq[String](expected.data as String val, actual.data as String val)
-    else
-      h.fail("Expected String")
-    end
-
-    try
-      let schema_record_str = """
-        {"namespace": "example.avro",
-         "type": "record",
-         "name": "User",
-         "fields": [
-           {"name": "name", "type": "string"},
-           {"name": "favorite_number",  "type": ["int", "null"]},
-           {"name": "favorite_color", "type": ["string", "null"]}
-         ]}
-      """
-      let schema = Schema(schema_record_str)
-
-      let encoder = schema.encoder()
-      let decoder = schema.decoder()
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
-      let expected: Record val = recover
-        Record(recover
-          [as AvroType: "Andrew",
-                        recover Union(0, I32(15)) end,
-                        recover Union(0, "red") end]
-        end)
-      end
-
-      encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
-
-      let actual = decoder.decode(rb) as Record val
-      h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
-
-      let expected_name = expected(0) as String val
-      let actual_name = actual(0) as String val
-      h.assert_eq[String](expected_name, actual_name)
-
-      let expected_number_union = expected(1) as Union val
-      let actual_number_union = actual(1) as Union val
-      h.assert_eq[USize](expected_number_union.selection as USize,
-                         actual_number_union.selection as USize)
-      h.assert_eq[I32](expected_number_union.data as I32,
-                       actual_number_union.data as I32)
-
-      let expected_color_union = expected(2) as Union val
-      let actual_color_union = actual(2) as Union val
-      h.assert_eq[USize](expected_color_union.selection as USize,
-                         actual_color_union.selection as USize)
-      h.assert_eq[String](expected_color_union.data as String,
-                       actual_color_union.data as String)
-    else
-      h.fail("Expected StringEcoder")
-    end
-
 class iso _TestLookupEncoder is UnitTest
   fun name(): String => "avro/LookupEncoder"
 
@@ -835,3 +742,115 @@ primitive _RecursiveNode
        end
      end
      temp
+
+class iso _TestSchema is UnitTest
+  fun name(): String => "avro/Schema"
+
+  fun apply(h: TestHelper) =>
+    try
+      let schema_string_str = "\"string\""
+      let schema = Schema(schema_string_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected = "hi there"
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+      let actual = decoder.decode(rb)
+      h.assert_eq[String](expected, actual as String)
+    else
+      h.fail("Expected String")
+    end
+
+    try
+      let schema_union_str = """
+        ["null", "string"]
+      """
+      let schema = Schema(schema_union_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected: Union val = recover Union(1, "hello world") end
+
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+      let actual = decoder.decode(rb) as Union val
+      h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
+      h.assert_eq[String](expected.data as String val, actual.data as String val)
+    else
+      h.fail("Expected String")
+    end
+
+    try
+      let schema_record_str = """
+        {"namespace": "example.avro",
+         "type": "record",
+         "name": "User",
+         "fields": [
+           {"name": "name", "type": "string"},
+           {"name": "favorite_number",  "type": ["int", "null"]},
+           {"name": "favorite_color", "type": ["string", "null"]}
+         ]}
+      """
+      let schema = Schema(schema_record_str)
+
+      let encoder = schema.encoder()
+      let decoder = schema.decoder()
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected: Record val = recover
+        Record(recover
+          [as AvroType: "Andrew",
+                        recover Union(0, I32(15)) end,
+                        recover Union(0, "red") end]
+        end)
+      end
+
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+
+      let actual = decoder.decode(rb) as Record val
+      h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
+
+      let expected_name = expected(0) as String val
+      let actual_name = actual(0) as String val
+      h.assert_eq[String](expected_name, actual_name)
+
+      let expected_number_union = expected(1) as Union val
+      let actual_number_union = actual(1) as Union val
+      h.assert_eq[USize](expected_number_union.selection as USize,
+                         actual_number_union.selection as USize)
+      h.assert_eq[I32](expected_number_union.data as I32,
+                       actual_number_union.data as I32)
+
+      let expected_color_union = expected(2) as Union val
+      let actual_color_union = actual(2) as Union val
+      h.assert_eq[USize](expected_color_union.selection as USize,
+                         actual_color_union.selection as USize)
+      h.assert_eq[String](expected_color_union.data as String,
+                       actual_color_union.data as String)
+    else
+      h.fail("Expected StringEcoder")
+    end
+
+class iso _TestRecursiveSchema is UnitTest
+  fun name(): String => "avro/Schema recursive schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+      {
+        "type": "record", 
+        "name": "LongList",
+        "aliases": ["LinkedLongs"],
+        "fields" : [
+          {"name": "value", "type": "long"},
+          {"name": "next", "type": ["null", "LongList"]}
+        ]
+      }
+    """
+    let schema = Schema(schema_str)
+    schema.encoder()
