@@ -13,17 +13,13 @@ use "collections"
 
 class NullType
   new ref create() => None
-  fun ref encoder(): Encoder =>
-    Debug("null encoder")
-    NullEncoder
+  fun ref encoder(): Encoder => NullEncoder
   fun ref decoder(): Decoder => NullDecoder
 
-class StringType
+class BooleanType
   new ref create() => None
-  fun ref encoder(): Encoder =>
-    Debug("string encoder")
-    StringEncoder
-  fun ref decoder(): Decoder => StringDecoder
+  fun ref encoder(): Encoder => BooleanEncoder
+  fun ref decoder(): Decoder => BooleanDecoder
 
 class IntType
   new ref create() => None
@@ -35,11 +31,28 @@ class LongType
   fun ref encoder(): Encoder => LongEncoder
   fun ref decoder(): Decoder => LongDecoder
 
-// type PrimitiveType is (NullType | BooleanType | IntType | LongType |
-//                        FloatType | DoubleType | BytesType | StringType)
+class FloatType
+  new ref create() => None
+  fun ref encoder(): Encoder => FloatEncoder
+  fun ref decoder(): Decoder => FloatDecoder
 
-type PrimitiveType is (NullType | StringType | IntType |
-                       LongType)
+class DoubleType
+  new ref create() => None
+  fun ref encoder(): Encoder => DoubleEncoder
+  fun ref decoder(): Decoder => DoubleDecoder
+
+class BytesType
+  new ref create() => None
+  fun ref encoder(): Encoder => BytesEncoder
+  fun ref decoder(): Decoder => BytesDecoder
+
+class StringType
+  new ref create() => None
+  fun ref encoder(): Encoder => StringEncoder
+  fun ref decoder(): Decoder => StringDecoder
+
+type PrimitiveType is (NullType | BooleanType | IntType | LongType |
+                       FloatType | DoubleType | BytesType | StringType)
 
 class RecordType
   let _types: Array[Type]
@@ -230,9 +243,13 @@ class Schema
   fun ref _type_name_to_type(type_name: String): Type =>
     match type_name
     | "null" => recover NullType end
-    | "string" => recover StringType end
+    | "boolean" => recover BooleanType end
     | "int" => recover IntType end
     | "long" => recover LongType end
+    | "float" => recover FloatType end
+    | "double" => recover DoubleType end
+    | "bytes" => recover BytesType end
+    | "string" => recover StringType end
     else
       Debug("looking up '" + type_name + "' in the symbol table")
       _type_symbol_table(type_name)

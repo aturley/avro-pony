@@ -26,49 +26,50 @@ actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
   new make() => None
   fun tag tests(test: PonyTest) =>
-    test(_TestVarIntEncoder)
-    test(_TestVarIntDecoder)
+    // test(_TestVarIntEncoder)
+    // test(_TestVarIntDecoder)
 
-    test(_TestNullDecoder)
-    test(_TestBooleanDecoder)
-    test(_TestIntDecoder)
-    test(_TestLongDecoder)
-    test(_TestFloatDecoder)
-    test(_TestDoubleDecoder)
-    test(_TestBytesDecoder)
-    test(_TestStringDecoder)
-    test(_TestUnionDecoder)
-    test(_TestRecordDecoder)
-    test(_TestEnumDecoder)
-    test(_TestArrayDecoder)
-    test(_TestMapDecoder)
-    test(_TestFixedDecoder)
-    test(_TestLookupDecoder)
-    test(_TestForwardDeclarationDecoder)
+    // test(_TestNullDecoder)
+    // test(_TestBooleanDecoder)
+    // test(_TestIntDecoder)
+    // test(_TestLongDecoder)
+    // test(_TestFloatDecoder)
+    // test(_TestDoubleDecoder)
+    // test(_TestBytesDecoder)
+    // test(_TestStringDecoder)
+    // test(_TestUnionDecoder)
+    // test(_TestRecordDecoder)
+    // test(_TestEnumDecoder)
+    // test(_TestArrayDecoder)
+    // test(_TestMapDecoder)
+    // test(_TestFixedDecoder)
+    // test(_TestLookupDecoder)
+    // test(_TestForwardDeclarationDecoder)
 
-    test(_TestNullEncoder)
-    test(_TestBooleanEncoder)
-    test(_TestIntEncoder)
-    test(_TestLongEncoder)
-    test(_TestFloatEncoder)
-    test(_TestDoubleEncoder)
-    test(_TestBytesEncoder)
-    test(_TestStringEncoder)
-    test(_TestUnionEncoder)
-    test(_TestRecordEncoder)
-    test(_TestEnumEncoder)
-    test(_TestArrayEncoder)
-    test(_TestMapEncoder)
-    test(_TestFixedEncoder)
-    test(_TestLookupEncoder)
-    test(_TestForwardDeclarationEncoder)
+    // test(_TestNullEncoder)
+    // test(_TestBooleanEncoder)
+    // test(_TestIntEncoder)
+    // test(_TestLongEncoder)
+    // test(_TestFloatEncoder)
+    // test(_TestDoubleEncoder)
+    // test(_TestBytesEncoder)
+    // test(_TestStringEncoder)
+    // test(_TestUnionEncoder)
+    // test(_TestRecordEncoder)
+    // test(_TestEnumEncoder)
+    // test(_TestArrayEncoder)
+    // test(_TestMapEncoder)
+    // test(_TestFixedEncoder)
+    // test(_TestLookupEncoder)
+    // test(_TestForwardDeclarationEncoder)
 
-    test(_TestRecursiveLookupEncoderDecoder)
-    test(_TestRecursiveForwardDeclarationEncoderDecoder)
+    // test(_TestRecursiveLookupEncoderDecoder)
+    // test(_TestRecursiveForwardDeclarationEncoderDecoder)
 
-    test(_TestSchema)
-    test(_TestSchemaRecord)
-    test(_TestRecursiveSchema)
+    // test(_TestSchema)
+    // test(_TestSchemaRecord)
+    // test(_TestRecursiveSchema)
+    test(_TestPrimitiveSchema)
 
 class iso _TestVarIntEncoder is UnitTest
   fun name(): String => "avro/_VarIntEncoder"
@@ -885,3 +886,51 @@ class iso _TestRecursiveSchema is UnitTest
                         rn.get_node(actual, 1) as String)
     h.assert_eq[None](rn.get_node(expected, 2) as None,
                       rn.get_node(actual, 2) as None)
+
+class iso _TestPrimitiveSchema is UnitTest
+  fun name(): String => "avro/Schema primitive schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+      {
+        "type": "record", 
+        "name": "Primitives",
+        "fields" : [
+          {"name": "theNull", "type": "null"},
+          {"name": "theBoolean", "type": "boolean"},
+          {"name": "theInt", "type": "int"},
+          {"name": "theLong", "type": "long"},
+          {"name": "theFloat", "type": "float"},
+          {"name": "theDouble", "type": "double"},
+          {"name": "theBytes", "type": "bytes"},
+          {"name": "theString", "type": "string"}
+        ]
+      }
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected: Record val = recover
+      Record(recover [as AvroType val: None, true, I32(15), I64(50823), 
+                                       F32(13.2), F64(3.14159),
+                                       recover [as U8: 0xBE, 0xEF] end,
+                                       "hello world"] end)
+    end
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as Record val
+
+    h.assert_eq[None](expected(0) as None, actual(0) as None)
+    h.assert_eq[Bool](expected(1) as Bool, actual(1) as Bool)
+    h.assert_eq[I32](expected(2) as I32, actual(2) as I32)
+    h.assert_eq[I64](expected(3) as I64, actual(3) as I64)
+    h.assert_eq[F32](expected(4) as F32, actual(4) as F32)
+    h.assert_eq[F64](expected(5) as F64, actual(5) as F64)
+    _AssertArrayEqU8(h, expected(6) as Array[U8 val] val,
+                        actual(6) as Array[U8 val] val)
+    h.assert_eq[String](expected(7) as String, actual(7) as String)
