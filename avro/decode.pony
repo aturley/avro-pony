@@ -181,3 +181,18 @@ class LookupDecoder is Decoder
     _decoder_map = decoder_map
   fun ref decode(buffer: ReadBuffer): AvroType val ? =>
     _decoder_map(_type_string).decode(buffer)
+
+class _BogusDecoder is Decoder
+  new ref create() =>
+    None
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    error
+
+class ForwardDeclarationDecoder is Decoder
+  var _decoder: Decoder ref = _BogusDecoder
+  new ref create() =>
+    None
+  fun ref set_body(decoder: Decoder) =>
+    _decoder = decoder
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    _decoder.decode(buffer)

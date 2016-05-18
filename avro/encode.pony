@@ -157,3 +157,18 @@ class LookupEncoder is Encoder
     _encoder_map = map
   fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
     _encoder_map(_type_string).encode(obj, buffer)
+
+class _BogusEncoder is Encoder
+  new ref create() =>
+    None
+  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+    error
+
+class ForwardDeclarationEncoder is Encoder
+  var _encoder: Encoder ref = _BogusEncoder
+  new ref create() =>
+    None
+  fun ref set_body(encoder: Encoder) =>
+    _encoder = encoder
+  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+    _encoder.encode(obj, buffer)
