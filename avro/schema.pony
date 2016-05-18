@@ -61,7 +61,6 @@ class UnionType
     end
     UnionDecoder(consume decoders)
 
-
 type Type is (PrimitiveType val | RecordType val | UnionType val)
 
 class Schema

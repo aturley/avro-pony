@@ -172,3 +172,12 @@ class FixedDecoder is Decoder
     _len = len
   fun ref decode(buffer: ReadBuffer): AvroType val ? =>
     buffer.block(_len)
+
+class LookupDecoder is Decoder
+  let _type_string: String
+  let _decoder_map: Map[String, Decoder]
+  new ref create(type_string: String, decoder_map: Map[String, Decoder]) =>
+    _type_string = type_string
+    _decoder_map = decoder_map
+  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+    _decoder_map(_type_string).decode(buffer)

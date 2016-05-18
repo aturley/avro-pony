@@ -43,6 +43,7 @@ actor Main is TestList
     test(_TestArrayDecoder)
     test(_TestMapDecoder)
     test(_TestFixedDecoder)
+    test(_TestLookupDecoder)
 
     test(_TestNullEncoder)
     test(_TestBooleanEncoder)
@@ -58,6 +59,9 @@ actor Main is TestList
     test(_TestArrayEncoder)
     test(_TestMapEncoder)
     test(_TestFixedEncoder)
+    test(_TestLookupEncoder)
+
+    test(_TestRecursiveLookupEncoderDecoder)
 
     test(_TestSchema)
 
@@ -293,6 +297,18 @@ class iso _TestFixedDecoder is UnitTest
     let fixed_decoder = FixedDecoder(4)
     _AssertArrayEqU8(h, recover [as U8 val: 0x0B, 0x0E, 0x0E, 0x0F] end,
                      fixed_decoder.decode(rb_fixed) as Array[U8 val] val)
+
+class iso _TestLookupDecoder is UnitTest
+  fun name(): String => "avro/LookupDecoder"
+
+  fun apply(h: TestHelper) ? =>
+    let data = recover [as U8: 0x06, 'a', 'b', 'c'] end // "abc"
+    let rb_string = ReadBuffer.append(consume data)
+    let string_decoder = StringDecoder
+    let decoder_map = Map[String, Decoder]
+    decoder_map("string") = string_decoder
+    let lookup_decoder = LookupDecoder("string", decoder_map)
+    h.assert_eq[String]("abc", lookup_decoder.decode(rb_string) as String)
 
 class iso _TestNullEncoder is UnitTest
   fun name(): String => "avro/NullEncoder"
@@ -651,3 +667,100 @@ class iso _TestSchema is UnitTest
     else
       h.fail("Expected StringEcoder")
     end
+
+class iso _TestLookupEncoder is UnitTest
+  fun name(): String => "avro/LookupEncoder"
+
+  fun apply(h: TestHelper) ? =>
+    let string_encoder = StringEncoder
+    let encoder_map = Map[String, Encoder]
+    encoder_map("string") = StringEncoder
+    let lookup_encoder = LookupEncoder("string", encoder_map)
+    let string_decoder = StringDecoder
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    let expected: String = "hello world\nbye"
+
+    lookup_encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = string_decoder.decode(rb) as String val
+    h.assert_eq[String](expected, actual)
+
+class iso _TestRecursiveLookupEncoderDecoder is UnitTest
+  fun name(): String => "avro/LookupEncoder recursive type"
+
+  fun apply(h: TestHelper) ? =>
+    let encoder_map = Map[String, Encoder]
+    let node_lookup_encoder = LookupEncoder("node", encoder_map)
+    let null_encoder = NullEncoder
+    let string_encoder = StringEncoder
+    let node_or_null_encoder =
+      UnionEncoder([as Encoder: node_lookup_encoder, null_encoder])
+    let node_encoder =
+      RecordEncoder([as Encoder: string_encoder, node_or_null_encoder])
+    encoder_map("node") = node_encoder
+
+    let decoder_map = Map[String, Decoder]
+    let node_lookup_decoder = LookupDecoder("node", decoder_map)
+    let null_decoder = NullDecoder
+    let string_decoder = StringDecoder
+    let node_or_null_decoder =
+      UnionDecoder([as Decoder: node_lookup_decoder, null_decoder])
+    let node_decoder =
+      RecordDecoder([as Decoder: string_decoder, node_or_null_decoder])
+    decoder_map("node") = node_decoder
+
+    let expected: AvroType val = _make_first_node("hi", _make_node("there",
+      _make_null_node()))
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    node_encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = node_decoder.decode(rb) as Record val
+    h.assert_eq[String](_get_node(expected, 0) as String,
+                        _get_node(actual, 0) as String)
+    h.assert_eq[String](_get_node(expected, 1) as String,
+                        _get_node(actual, 1) as String)
+    h.assert_eq[None](_get_node(expected, 2) as None,
+                      _get_node(actual, 2) as None)
+
+
+    fun _make_null_node(): AvroType val =>
+      recover Union(1, None) end
+
+    fun _make_node(v: AvroType, next: AvroType): AvroType val =>
+      recover
+        Union(0,
+          recover
+            Record(
+              recover
+                [as AvroType: v, next]
+              end
+            )
+          end
+        )
+      end
+
+    fun _make_first_node(v: AvroType, next: AvroType): AvroType val =>
+      recover
+        Record(
+          recover
+            [as AvroType: v, next]
+          end
+        )
+      end
+
+   fun _get_node(v: AvroType val, idx: USize): AvroType val ? =>
+     var temp_rec: Record val = v as Record val
+     var temp: AvroType = temp_rec(0) as String
+     for i in Range(0, idx) do
+       let union = temp_rec(1) as Union val
+       match union.selection
+       | 0 =>
+         temp_rec = union.data as Record val
+         temp = temp_rec(0) as String
+       else
+         temp = None
+       end
+     end
+     temp

@@ -149,3 +149,11 @@ class FixedEncoder is Encoder
     let data = obj as Array[U8 val] val
     buffer.write(data)
 
+class LookupEncoder is Encoder
+  let _type_string: String
+  let _encoder_map: Map[String, Encoder]
+  new ref create(type_string: String, map: Map[String, Encoder]) =>
+    _type_string = type_string
+    _encoder_map = map
+  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+    _encoder_map(_type_string).encode(obj, buffer)
