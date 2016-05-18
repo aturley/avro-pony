@@ -26,47 +26,48 @@ actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
   new make() => None
   fun tag tests(test: PonyTest) =>
-    // test(_TestVarIntEncoder)
-    // test(_TestVarIntDecoder)
+    test(_TestVarIntEncoder)
+    test(_TestVarIntDecoder)
 
-    // test(_TestNullDecoder)
-    // test(_TestBooleanDecoder)
-    // test(_TestIntDecoder)
-    // test(_TestLongDecoder)
-    // test(_TestFloatDecoder)
-    // test(_TestDoubleDecoder)
-    // test(_TestBytesDecoder)
-    // test(_TestStringDecoder)
-    // test(_TestUnionDecoder)
-    // test(_TestRecordDecoder)
-    // test(_TestEnumDecoder)
-    // test(_TestArrayDecoder)
-    // test(_TestMapDecoder)
-    // test(_TestFixedDecoder)
-    // test(_TestLookupDecoder)
-    // test(_TestForwardDeclarationDecoder)
+    test(_TestNullDecoder)
+    test(_TestBooleanDecoder)
+    test(_TestIntDecoder)
+    test(_TestLongDecoder)
+    test(_TestFloatDecoder)
+    test(_TestDoubleDecoder)
+    test(_TestBytesDecoder)
+    test(_TestStringDecoder)
+    test(_TestUnionDecoder)
+    test(_TestRecordDecoder)
+    test(_TestEnumDecoder)
+    test(_TestArrayDecoder)
+    test(_TestMapDecoder)
+    test(_TestFixedDecoder)
+    test(_TestLookupDecoder)
+    test(_TestForwardDeclarationDecoder)
 
-    // test(_TestNullEncoder)
-    // test(_TestBooleanEncoder)
-    // test(_TestIntEncoder)
-    // test(_TestLongEncoder)
-    // test(_TestFloatEncoder)
-    // test(_TestDoubleEncoder)
-    // test(_TestBytesEncoder)
-    // test(_TestStringEncoder)
-    // test(_TestUnionEncoder)
-    // test(_TestRecordEncoder)
-    // test(_TestEnumEncoder)
-    // test(_TestArrayEncoder)
-    // test(_TestMapEncoder)
-    // test(_TestFixedEncoder)
-    // test(_TestLookupEncoder)
-    // test(_TestForwardDeclarationEncoder)
+    test(_TestNullEncoder)
+    test(_TestBooleanEncoder)
+    test(_TestIntEncoder)
+    test(_TestLongEncoder)
+    test(_TestFloatEncoder)
+    test(_TestDoubleEncoder)
+    test(_TestBytesEncoder)
+    test(_TestStringEncoder)
+    test(_TestUnionEncoder)
+    test(_TestRecordEncoder)
+    test(_TestEnumEncoder)
+    test(_TestArrayEncoder)
+    test(_TestMapEncoder)
+    test(_TestFixedEncoder)
+    test(_TestLookupEncoder)
+    test(_TestForwardDeclarationEncoder)
 
-    // test(_TestRecursiveLookupEncoderDecoder)
-    // test(_TestRecursiveForwardDeclarationEncoderDecoder)
+    test(_TestRecursiveLookupEncoderDecoder)
+    test(_TestRecursiveForwardDeclarationEncoderDecoder)
 
-    // test(_TestSchema)
+    test(_TestSchema)
+    test(_TestSchemaRecord)
     test(_TestRecursiveSchema)
 
 class iso _TestVarIntEncoder is UnitTest
@@ -785,6 +786,9 @@ class iso _TestSchema is UnitTest
       h.fail("Expected String")
     end
 
+class iso _TestSchemaRecord is UnitTest
+  fun name(): String => "avro/Schema record"
+  fun apply(h: TestHelper) =>
     try
       let schema_record_str = """
         {"namespace": "example.avro",
@@ -798,8 +802,18 @@ class iso _TestSchema is UnitTest
       """
       let schema = Schema(schema_record_str)
 
-      let encoder = schema.encoder()
-      let decoder = schema.decoder()
+      let encoder = try
+        schema.encoder()
+      else
+        h.fail("couldn't get encoder")
+        error
+      end
+      let decoder = try
+        schema.decoder()
+      else
+        h.fail("couldn't get decoder")
+        error
+      end
       let wb: WriteBuffer ref = WriteBuffer
       let rb: ReadBuffer ref = ReadBuffer
       let expected: Record val = recover
@@ -834,7 +848,7 @@ class iso _TestSchema is UnitTest
       h.assert_eq[String](expected_color_union.data as String,
                        actual_color_union.data as String)
     else
-      h.fail("Expected StringEcoder")
+      h.fail("Expected StringEncoder")
     end
 
 class iso _TestRecursiveSchema is UnitTest
@@ -844,13 +858,30 @@ class iso _TestRecursiveSchema is UnitTest
     let schema_str = """
       {
         "type": "record", 
-        "name": "LongList",
-        "aliases": ["LinkedLongs"],
+        "name": "StringList",
+        "aliases": ["LinkedStrings"],
         "fields" : [
-          {"name": "value", "type": "long"},
-          {"name": "next", "type": ["null", "LongList"]}
+          {"name": "value", "type": "string"},
+          {"name": "next", "type": ["StringList", "null"]}
         ]
       }
     """
+
     let schema = Schema(schema_str)
-    schema.encoder()
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let rn = _RecursiveNode
+    let expected: AvroType val = rn.make_first_node("hi", rn.make_node("there",
+      rn.make_null_node()))
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as Record val
+    h.assert_eq[String](rn.get_node(expected, 0) as String,
+                        rn.get_node(actual, 0) as String)
+    h.assert_eq[String](rn.get_node(expected, 1) as String,
+                        rn.get_node(actual, 1) as String)
+    h.assert_eq[None](rn.get_node(expected, 2) as None,
+                      rn.get_node(actual, 2) as None)

@@ -11,39 +11,48 @@ use "collections"
 //   as metadata, but must not affect the format of serialized data.
 // * A JSON array, representing a union of embedded types.
 
-primitive NullType
-  fun encoder(): Encoder => NullEncoder
-  fun decoder(): Decoder => NullDecoder
+class NullType
+  new ref create() => None
+  fun ref encoder(): Encoder =>
+    Debug("null encoder")
+    NullEncoder
+  fun ref decoder(): Decoder => NullDecoder
 
-primitive StringType
-  fun encoder(): Encoder => StringEncoder
-  fun decoder(): Decoder => StringDecoder
+class StringType
+  new ref create() => None
+  fun ref encoder(): Encoder =>
+    Debug("string encoder")
+    StringEncoder
+  fun ref decoder(): Decoder => StringDecoder
 
-primitive IntType
-  fun encoder(): Encoder => IntEncoder
-  fun decoder(): Decoder => IntDecoder
+class IntType
+  new ref create() => None
+  fun ref encoder(): Encoder => IntEncoder
+  fun ref decoder(): Decoder => IntDecoder
 
-primitive LongType
-  fun encoder(): Encoder => LongEncoder
-  fun decoder(): Decoder => LongDecoder
+class LongType
+  new ref create() => None
+  fun ref encoder(): Encoder => LongEncoder
+  fun ref decoder(): Decoder => LongDecoder
 
 // type PrimitiveType is (NullType | BooleanType | IntType | LongType |
 //                        FloatType | DoubleType | BytesType | StringType)
 
-type PrimitiveType is (NullType val | StringType val | IntType val |
-                       LongType val)
+type PrimitiveType is (NullType | StringType | IntType |
+                       LongType)
 
 class RecordType
-  let _types: Array[Type] val
-  new val create(types: Array[Type] val) =>
+  let _types: Array[Type]
+  new create(types: Array[Type]) =>
     _types = types
-  fun encoder(): Encoder ? =>
+  fun ref encoder(): Encoder ? =>
+    Debug("record encoder")
     let encoders = Array[Encoder]
     for t in _types.values() do
       encoders.push(t.encoder())
     end
     RecordEncoder(consume encoders)
-  fun decoder(): Decoder ? =>
+  fun ref decoder(): Decoder ? =>
     let decoders = Array[Decoder]
     for t in _types.values() do
       decoders.push(t.decoder())
@@ -51,60 +60,90 @@ class RecordType
     RecordDecoder(consume decoders)
 
 class UnionType
-  let _types: Array[Type] val
-  new val create(types: Array[Type] val) =>
+  let _types: Array[Type]
+  new create(types: Array[Type]) =>
     _types = types
-  fun encoder(): Encoder ? =>
+  fun ref encoder(): Encoder ? =>
+    Debug("union encoder")
     let encoders = Array[Encoder]
     for t in _types.values() do
       encoders.push(t.encoder())
     end
     UnionEncoder(consume encoders)
-  fun decoder(): Decoder ? =>
+  fun ref decoder(): Decoder ? =>
     let decoders = Array[Decoder]
     for t in _types.values() do
       decoders.push(t.decoder())
     end
     UnionDecoder(consume decoders)
 
-primitive BogusType
-  fun encoder(): Encoder ? =>
+class _BogusType
+  new ref create() =>
+    None
+  fun ref encoder(): Encoder ? =>
+    Debug("tried to get encoder from _BogusType")
     error
-  fun decoder(): Decoder ? =>
+  fun ref decoder(): Decoder ? =>
+    Debug("tried to get decoder from _BogusType")
     error
 
 class ForwardDeclarationType
-  var _type: (Type | BogusType) = BogusType
-  new ref create() =>
-    None
-  fun ref set_body(type': Type) =>
+  var _type: (Type | _BogusType) = _BogusType
+  var _encoder_table: AvroEncoderSymbolTable
+  var _decoder_table: AvroDecoderSymbolTable
+  var _type_name: String = ""
+  new create(encoder_table: AvroEncoderSymbolTable,
+             decoder_table: AvroDecoderSymbolTable) =>
+    _encoder_table = encoder_table
+    _decoder_table = decoder_table
+    
+  fun ref set_body(type_name: String, type': Type) =>
     _type = type'
-  fun encoder(): Encoder ? =>
-    _type.encoder()
-  fun decoder(): Decoder ? =>
-    _type.decoder()
+    _type_name = type_name
+  fun ref encoder(): Encoder =>
+    Debug(_type_name + " encoder")
+    _encoder_table(_type_name)
+  fun ref decoder(): Decoder =>
+    _decoder_table(_type_name)
 
-type Type is (PrimitiveType val | RecordType val | UnionType val |
-              ForwardDeclarationType val)
+type Type is (PrimitiveType | RecordType | UnionType |
+              ForwardDeclarationType)
 
-// class AvroTypeSymbolTable
-//   let _map: Map[String, ForwardDeclarationType iso] =
-//     Map[String, ForwardDeclarationType]
-//   fun ref apply(symbol: String): ForwardDeclarationType iso^ =>
-//     try
-//       if _map.contains(symbol) then
-//         _map(symbol)
-//       else
-//         let fwd = recover ForwardDeclarationType end
-//         _map(symbol) = fwd
-//         consume fwd
-//       end
-//     else
-//       // never gets here
-//       recover ForwardDeclarationType end
-//     end
-//   fun ref set_body(type_name: String, type': Type) ? =>
-//     _map(type_name).set_body(type')
+class AvroTypeSymbolTable
+  let _map: Map[String, Type] = Map[String, Type]
+  var _encoder_symbol_table: AvroEncoderSymbolTable = AvroEncoderSymbolTable
+  var _decoder_symbol_table: AvroDecoderSymbolTable = AvroDecoderSymbolTable
+  fun ref apply(symbol: String): Type =>
+    try
+      if not _map.contains(symbol) then
+        _map(symbol) = ForwardDeclarationType(_encoder_symbol_table,
+                                              _decoder_symbol_table)
+      end
+      _map(symbol)
+    else
+      // never gets here
+      ForwardDeclarationType(_encoder_symbol_table,
+                             _decoder_symbol_table)
+    end
+  fun ref set_body(type_name: String, type': Type) ? =>
+    try
+      (this(type_name) as ForwardDeclarationType).set_body(type_name, type')
+    else
+      Debug("failed to set body for '" + type_name + "' in symbol table")
+      error
+    end
+    try
+      _encoder_symbol_table.set_body(type_name, type'.encoder())
+    else
+      Debug("failed to set encoder for '" + type_name + "' in symbol table")
+      error
+    end
+    try
+      _decoder_symbol_table.set_body(type_name, type'.decoder())
+    else
+      Debug("failed to set decoder for '" + type_name + "' in symbol table")
+      error
+    end
 
 class AvroEncoderSymbolTable
   let _map: Map[String, Encoder] = Map[String, Encoder] 
@@ -122,10 +161,12 @@ class AvroEncoderSymbolTable
       ForwardDeclarationEncoder
     end
   fun ref set_body(type_name: String, encoder: Encoder) ? =>
-    match _map(type_name)
+    match this(type_name)
     | let forward_encoder: ForwardDeclarationEncoder =>
+      Debug("set encoder body for " + type_name)
       forward_encoder.set_body(encoder)
     else
+      Debug("failed to set encoder body for " + type_name)
       error
     end
 
@@ -145,23 +186,21 @@ class AvroDecoderSymbolTable
       ForwardDeclarationDecoder
     end
   fun ref set_body(type_name: String, decoder: Decoder) ? =>
-    match _map(type_name)
+    match this(type_name)
     | let forward_decoder: ForwardDeclarationDecoder =>
       forward_decoder.set_body(decoder)
     else
+      Debug("failed to set decoder body for " + type_name)
       error
     end
 
 class Schema
   let _json_doc: JsonDoc
   var _type: (Type | None) = None
-  var _encoder_symbol_table: AvroEncoderSymbolTable = AvroEncoderSymbolTable
-  var _decoder_symbol_table: AvroDecoderSymbolTable = AvroDecoderSymbolTable
-  // var _type_symbol_table: AvroTypeSymbolTable = AvroTypeSymbolTable
+  var _type_symbol_table: AvroTypeSymbolTable = AvroTypeSymbolTable
   new create(string: String) ? =>
     _json_doc = JsonDoc
     _json_doc.parse(string)
-
   fun ref encoder(): Encoder ? =>
     _get_type().encoder()
 
@@ -181,28 +220,27 @@ class Schema
       | let record: JsonObject =>
         _get_record_type(record)
       | let union: JsonArray =>
-        Debug("UNION!")
         _get_union_type(union)
       else
+        Debug("failed to get type from json type")
         error
       end
     end
 
-  fun ref _type_name_to_type(type_name: String): Type ? =>
-    Debug("looking for type_name=" + type_name)
+  fun ref _type_name_to_type(type_name: String): Type =>
     match type_name
     | "null" => recover NullType end
     | "string" => recover StringType end
     | "int" => recover IntType end
     | "long" => recover LongType end
     else
-      // _type_symbol_table(type_name)
-      error
+      Debug("looking up '" + type_name + "' in the symbol table")
+      _type_symbol_table(type_name)
     end
 
   fun ref _get_record_type(record: JsonObject): Type ? =>
     let sz = record.data.size()
-    let types = recover Array[Type].reserve(sz) end
+    let types = Array[Type].reserve(sz)
     let name = record.data("name") as String
     let fields = record.data("fields") as JsonArray
     for f in fields.data.values() do
@@ -210,19 +248,13 @@ class Schema
       types.push(_get_type(t))
     end
     let record_type = RecordType(consume types)
-    // _type_symbol_table(name).set_body(record_type)
+    _type_symbol_table.set_body(name, record_type)
     consume record_type
 
   fun ref _get_union_type(union: JsonArray): Type ? =>
     let sz = union.data.size()
-    let types = recover Array[Type].reserve(sz) end
+    let types = Array[Type].reserve(sz)
     for t in union.data.values() do
-      match t
-      | let xyz: String =>
-        Debug("in union, looking for type_name=" + xyz)
-      else
-        None
-      end
       types.push(_get_type(t))
     end
     UnionType(consume types)
