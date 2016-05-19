@@ -21,7 +21,6 @@ primitive _WriteBufferIntoReadBuffer
       rb.append(x as Array[U8 val] val)
     end
 
-
 actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
   new make() => None
@@ -799,7 +798,8 @@ class iso _TestRecursiveSchema is UnitTest
   fun apply(h: TestHelper) ? =>
     let schema_str = """
       {
-        "type": "record", 
+        "type": "record",
+        "namespace": "x.y.z",
         "name": "StringList",
         "aliases": ["LinkedStrings"],
         "fields" : [
