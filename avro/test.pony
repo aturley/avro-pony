@@ -67,9 +67,10 @@ actor Main is TestList
     test(_TestRecursiveForwardDeclarationEncoderDecoder)
 
     test(_TestSchema)
-    test(_TestSchemaRecord)
     test(_TestRecursiveSchema)
     test(_TestPrimitiveSchema)
+    test(_TestSchemaRecord)
+    test(_TestSchemaEnum)
 
 class iso _TestVarIntEncoder is UnitTest
   fun name(): String => "avro/_VarIntEncoder"
@@ -787,71 +788,6 @@ class iso _TestSchema is UnitTest
       h.fail("Expected String")
     end
 
-class iso _TestSchemaRecord is UnitTest
-  fun name(): String => "avro/Schema record"
-  fun apply(h: TestHelper) =>
-    try
-      let schema_record_str = """
-        {"namespace": "example.avro",
-         "type": "record",
-         "name": "User",
-         "fields": [
-           {"name": "name", "type": "string"},
-           {"name": "favorite_number",  "type": ["int", "null"]},
-           {"name": "favorite_color", "type": ["string", "null"]}
-         ]}
-      """
-      let schema = Schema(schema_record_str)
-
-      let encoder = try
-        schema.encoder()
-      else
-        h.fail("couldn't get encoder")
-        error
-      end
-      let decoder = try
-        schema.decoder()
-      else
-        h.fail("couldn't get decoder")
-        error
-      end
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
-      let expected: Record val = recover
-        Record(recover
-          [as AvroType: "Andrew",
-                        recover Union(0, I32(15)) end,
-                        recover Union(0, "red") end]
-        end)
-      end
-
-      encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
-
-      let actual = decoder.decode(rb) as Record val
-      h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
-
-      let expected_name = expected(0) as String val
-      let actual_name = actual(0) as String val
-      h.assert_eq[String](expected_name, actual_name)
-
-      let expected_number_union = expected(1) as Union val
-      let actual_number_union = actual(1) as Union val
-      h.assert_eq[USize](expected_number_union.selection as USize,
-                         actual_number_union.selection as USize)
-      h.assert_eq[I32](expected_number_union.data as I32,
-                       actual_number_union.data as I32)
-
-      let expected_color_union = expected(2) as Union val
-      let actual_color_union = actual(2) as Union val
-      h.assert_eq[USize](expected_color_union.selection as USize,
-                         actual_color_union.selection as USize)
-      h.assert_eq[String](expected_color_union.data as String,
-                       actual_color_union.data as String)
-    else
-      h.fail("Expected StringEncoder")
-    end
-
 class iso _TestRecursiveSchema is UnitTest
   fun name(): String => "avro/Schema recursive schema"
 
@@ -934,3 +870,94 @@ class iso _TestPrimitiveSchema is UnitTest
     _AssertArrayEqU8(h, expected(6) as Array[U8 val] val,
                         actual(6) as Array[U8 val] val)
     h.assert_eq[String](expected(7) as String, actual(7) as String)
+
+class iso _TestSchemaRecord is UnitTest
+  fun name(): String => "avro/Schema record"
+  fun apply(h: TestHelper) =>
+    try
+      let schema_record_str = """
+        {"namespace": "example.avro",
+         "type": "record",
+         "name": "User",
+         "fields": [
+           {"name": "name", "type": "string"},
+           {"name": "favorite_number",  "type": ["int", "null"]},
+           {"name": "favorite_color", "type": ["string", "null"]}
+         ]}
+      """
+      let schema = Schema(schema_record_str)
+
+      let encoder = try
+        schema.encoder()
+      else
+        h.fail("couldn't get encoder")
+        error
+      end
+      let decoder = try
+        schema.decoder()
+      else
+        h.fail("couldn't get decoder")
+        error
+      end
+      let wb: WriteBuffer ref = WriteBuffer
+      let rb: ReadBuffer ref = ReadBuffer
+      let expected: Record val = recover
+        Record(recover
+          [as AvroType: "Andrew",
+                        recover Union(0, I32(15)) end,
+                        recover Union(0, "red") end]
+        end)
+      end
+
+      encoder.encode(expected, wb)
+      _WriteBufferIntoReadBuffer(wb, rb)
+
+      let actual = decoder.decode(rb) as Record val
+      h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
+
+      let expected_name = expected(0) as String val
+      let actual_name = actual(0) as String val
+      h.assert_eq[String](expected_name, actual_name)
+
+      let expected_number_union = expected(1) as Union val
+      let actual_number_union = actual(1) as Union val
+      h.assert_eq[USize](expected_number_union.selection as USize,
+                         actual_number_union.selection as USize)
+      h.assert_eq[I32](expected_number_union.data as I32,
+                       actual_number_union.data as I32)
+
+      let expected_color_union = expected(2) as Union val
+      let actual_color_union = actual(2) as Union val
+      h.assert_eq[USize](expected_color_union.selection as USize,
+                         actual_color_union.selection as USize)
+      h.assert_eq[String](expected_color_union.data as String,
+                       actual_color_union.data as String)
+    else
+      h.fail("Expected StringEncoder")
+    end
+
+class iso _TestSchemaEnum is UnitTest
+  fun name(): String => "avro/Schema enum schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+    {
+      "type": "enum", 
+      "name": "Colors",
+      "symbols" : ["RED", "GREEN", "BLUE"]
+    }
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected = EnumSymbol("GREEN", 1)
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as EnumSymbol val
+
+    h.assert_eq[EnumSymbol val](expected, actual)

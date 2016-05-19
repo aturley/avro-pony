@@ -72,6 +72,20 @@ class RecordType
     end
     RecordDecoder(consume decoders)
 
+class EnumType
+  let _symbols: Array[EnumSymbol val] val
+  new create(symbol_names: Array[String]) =>
+    let sz = symbol_names.size()
+    let symbols = recover Array[EnumSymbol val](sz) end
+    for (idx, symbol_name) in symbol_names.pairs() do
+      symbols.push(EnumSymbol(symbol_name, idx))
+    end
+    _symbols = consume symbols
+  fun ref encoder(): Encoder =>
+    EnumEncoder(_symbols)
+  fun ref decoder(): Decoder =>
+    EnumDecoder(_symbols)
+
 class UnionType
   let _types: Array[Type]
   new create(types: Array[Type]) =>
@@ -119,7 +133,7 @@ class ForwardDeclarationType
   fun ref decoder(): Decoder =>
     _decoder_table(_type_name)
 
-type Type is (PrimitiveType | RecordType | UnionType |
+type Type is (PrimitiveType | RecordType | EnumType | UnionType |
               ForwardDeclarationType)
 
 class AvroTypeSymbolTable
@@ -230,8 +244,22 @@ class Schema
       match json_type
       | let type_name: String val =>
         _type_name_to_type(type_name)
-      | let record: JsonObject =>
-        _get_record_type(record)
+      | let complex_type: JsonObject =>
+        let type_name = try
+          (complex_type.data("type") as String)
+        else
+          Debug("failed to get name from complex type")
+          error
+        end
+        match type_name
+        | "record" =>
+          _get_record_type(complex_type)
+        | "enum" =>
+          _get_enum_type(complex_type)
+        else
+          Debug("failed to get complex type's type, type=" + type_name)
+          error
+        end
       | let union: JsonArray =>
         _get_union_type(union)
       else
@@ -256,10 +284,10 @@ class Schema
     end
 
   fun ref _get_record_type(record: JsonObject): Type ? =>
-    let sz = record.data.size()
-    let types = Array[Type].reserve(sz)
-    let name = record.data("name") as String
     let fields = record.data("fields") as JsonArray
+    let sz = fields.data.size()
+    let types = Array[Type](sz)
+    let name = record.data("name") as String
     for f in fields.data.values() do
       let t = (f as JsonObject).data("type")
       types.push(_get_type(t))
@@ -267,6 +295,18 @@ class Schema
     let record_type = RecordType(consume types)
     _type_symbol_table.set_body(name, record_type)
     consume record_type
+
+  fun ref _get_enum_type(enum: JsonObject): Type ? =>
+    let raw_symbol_names = enum.data("symbols") as JsonArray
+    let sz = raw_symbol_names.data.size()
+    let name = enum.data("name") as String
+    let symbol_names = recover Array[String val](sz) end
+    for sn in raw_symbol_names.data.values() do
+      symbol_names.push(sn as String)
+    end
+    let enum_type = EnumType(consume symbol_names)
+    _type_symbol_table.set_body(name, enum_type)
+    consume enum_type
 
   fun ref _get_union_type(union: JsonArray): Type ? =>
     let sz = union.data.size()
