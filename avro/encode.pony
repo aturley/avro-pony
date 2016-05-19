@@ -140,13 +140,13 @@ class MapEncoder is Encoder
     end
     _long_encoder.encode(I64(0), buffer)
 
-// TODO:
-// This encodes whatever array you give it. Should it enforce the fixed size?
 class FixedEncoder is Encoder
-  new ref create() =>
-    None
+  let _len: USize
+  new ref create(len: USize) =>
+    _len = len
   fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
     let data = obj as Array[U8 val] val
+    if data.size() != _len then error end
     buffer.write(data)
 
 class LookupEncoder is Encoder

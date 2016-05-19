@@ -1,5 +1,6 @@
 use "net"
 use "collections"
+use "debug"
 
 interface Decoder
   fun ref decode(buffer: ReadBuffer): AvroType val ?

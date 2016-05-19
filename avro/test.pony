@@ -71,6 +71,10 @@ actor Main is TestList
     test(_TestPrimitiveSchema)
     test(_TestSchemaRecord)
     test(_TestSchemaEnum)
+    test(_TestSchemaArray)
+    test(_TestSchemaMap)
+    test(_TestSchemaFixed)
+    test(_TestSchemaUnion)
 
 class iso _TestVarIntEncoder is UnitTest
   fun name(): String => "avro/_VarIntEncoder"
@@ -580,10 +584,11 @@ class iso _TestFixedEncoder is UnitTest
   fun name(): String => "avro/FixedEncoder"
 
   fun apply(h: TestHelper) ? =>
-    let fixed_encoder = FixedEncoder
+    let fixed_encoder = FixedEncoder(4)
     let fixed_decoder = FixedDecoder(4)
     let wb: WriteBuffer ref = WriteBuffer
     let rb: ReadBuffer ref = ReadBuffer
+
     let expected: Array[U8 val] val = recover
       [as U8 val: 0xDE, 0xAD, 0xBE, 0xEF] end
 
@@ -591,7 +596,7 @@ class iso _TestFixedEncoder is UnitTest
     for x in wb.done().values() do
       rb.append(x as Array[U8 val] val)
     end
-    let actual = fixed_decoder.decode(rb) as Array [U8] val
+    let actual = fixed_decoder.decode(rb) as Array[U8] val
     _AssertArrayEqU8(h, expected, actual)
 
 class iso _TestLookupEncoder is UnitTest
@@ -961,3 +966,118 @@ class iso _TestSchemaEnum is UnitTest
     let actual = decoder.decode(rb) as EnumSymbol val
 
     h.assert_eq[EnumSymbol val](expected, actual)
+
+class iso _TestSchemaArray is UnitTest
+  fun name(): String => "avro/Schema array schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+    {
+      "type": "array",
+      "items": "string"
+    }
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected: AvroArray val = recover
+      AvroArray(recover [as AvroType: "a", "b", "c"] end)
+    end
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+
+    let actual = decoder.decode(rb) as AvroArray val
+    h.assert_eq[USize](expected.size(), actual.size())
+    h.assert_eq[String](expected(0) as String, actual(0) as String)
+    h.assert_eq[String](expected(1) as String, actual(1) as String)
+    h.assert_eq[String](expected(2) as String, actual(2) as String)
+
+class iso _TestSchemaMap is UnitTest
+  fun name(): String => "avro/Schema map schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+    {
+      "type": "map",
+      "values": "string"
+    }
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected: AvroMap val = recover
+      AvroMap(recover
+        let map = recover Map[String val, AvroType val] end
+        map.update("a", "A")
+        map.update("b", "B")
+        map.update("c", "C")
+        consume map
+      end)
+    end
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as AvroMap val
+
+    h.assert_eq[USize](expected.size(), actual.size())
+    h.assert_eq[String](expected("a") as String val, actual("a") as String val)
+    h.assert_eq[String](expected("b") as String val, actual("b") as String val)
+    h.assert_eq[String](expected("c") as String val, actual("c") as String val)
+
+class iso _TestSchemaUnion is UnitTest
+  fun name(): String => "avro/Schema union schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+    ["null", "string"]
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected: Union val = recover Union(1, "hello world") end
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as Union val
+
+    h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
+    h.assert_eq[String](expected.data as String val, actual.data as String val)
+
+class iso _TestSchemaFixed is UnitTest
+  fun name(): String => "avro/Schema fixed schema"
+
+  fun apply(h: TestHelper) ? =>
+    let schema_str = """
+    {
+      "type": "fixed",
+      "name": "MD5",
+      "size": 4
+    }
+    """
+
+    let schema = Schema(schema_str)
+    let encoder = schema.encoder()
+    let decoder = schema.decoder()
+
+    let expected: Array[U8 val] val = recover
+      [as U8 val: 0xDE, 0xAD, 0xBE, 0xEF] end
+
+    let wb: WriteBuffer ref = WriteBuffer
+    let rb: ReadBuffer ref = ReadBuffer
+    encoder.encode(expected, wb)
+    _WriteBufferIntoReadBuffer(wb, rb)
+    let actual = decoder.decode(rb) as Array[U8] val
+    _AssertArrayEqU8(h, expected, actual)

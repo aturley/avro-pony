@@ -104,6 +104,39 @@ class UnionType
     end
     UnionDecoder(consume decoders)
 
+class ArrayType
+  let _type: Type
+  new create(type': Type) =>
+    _type = type'
+  fun ref encoder(): Encoder ? =>
+    Debug("ArrayEncoder")
+    ArrayEncoder(_type.encoder())
+  fun ref decoder(): Decoder ? =>
+    Debug("ArrayDecoder")
+    ArrayDecoder(_type.decoder())
+
+class MapType
+  let _type: Type
+  new create(type': Type) =>
+    _type = type'
+  fun ref encoder(): Encoder ? =>
+    Debug("MapEncoder")
+    MapEncoder(_type.encoder())
+  fun ref decoder(): Decoder ? =>
+    Debug("MapDecoder")
+    MapDecoder(_type.decoder())
+
+class FixedType
+  let _size: USize
+  new create(size': USize) =>
+    _size = size'
+  fun ref encoder(): Encoder =>
+    Debug("FixedEncoder")
+    FixedEncoder(_size)
+  fun ref decoder(): Decoder =>
+    Debug("FixedDecoder")
+    FixedDecoder(_size)
+
 class _BogusType
   new ref create() =>
     None
@@ -133,8 +166,10 @@ class ForwardDeclarationType
   fun ref decoder(): Decoder =>
     _decoder_table(_type_name)
 
-type Type is (PrimitiveType | RecordType | EnumType | UnionType |
-              ForwardDeclarationType)
+type ComplexType is (RecordType | EnumType | ArrayType | MapType | FixedType |
+                     UnionType)
+
+type Type is (PrimitiveType | ComplexType | ForwardDeclarationType)
 
 class AvroTypeSymbolTable
   let _map: Map[String, Type] = Map[String, Type]
@@ -251,11 +286,18 @@ class Schema
           Debug("failed to get name from complex type")
           error
         end
+        Debug("type name is " + type_name)
         match type_name
         | "record" =>
           _get_record_type(complex_type)
         | "enum" =>
           _get_enum_type(complex_type)
+        | "array" =>
+          _get_array_type(complex_type)
+        | "map" =>
+          _get_map_type(complex_type)
+        | "fixed" =>
+          _get_fixed_type(complex_type)
         else
           Debug("failed to get complex type's type, type=" + type_name)
           error
@@ -307,6 +349,21 @@ class Schema
     let enum_type = EnumType(consume symbol_names)
     _type_symbol_table.set_body(name, enum_type)
     consume enum_type
+
+  fun ref _get_array_type(array: JsonObject): Type ? =>
+    let items_type = array.data("items") as String
+    ArrayType(_get_type(items_type))
+
+  fun ref _get_map_type(array: JsonObject): Type ? =>
+    let values_type = array.data("values") as String
+    MapType(_get_type(values_type))
+
+  fun ref _get_fixed_type(fixed: JsonObject): Type ? =>
+    let size' = fixed.data("size") as I64
+    let name = fixed.data("name") as String
+    let fixed_type = FixedType(size'.usize())
+    _type_symbol_table.set_body(name, fixed_type)
+    consume fixed_type
 
   fun ref _get_union_type(union: JsonArray): Type ? =>
     let sz = union.data.size()
