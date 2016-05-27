@@ -25,7 +25,7 @@ class _VarIntEncoder is Encoder
     var remaining = (if long >= 0 then long else (not long) end) << 1
 
     var zigzag = (remaining.u8() and 0x7F) or
-                 ((long >> 31).u8() and 1)
+                 ((long >> 63).u8() and 1)
 
     while remaining != 0 do
       buffer.u8(zigzag or (1 << 7))
