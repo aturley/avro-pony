@@ -1,6 +1,7 @@
 use "ponytest"
 use "collections"
 use "net"
+use "buffered"
 
 primitive _AssertArrayEqU8
   fun apply(h: TestHelper, a1: Array[U8 val] val, a2: Array[U8 val] val) ? =>
@@ -15,8 +16,8 @@ primitive _AssertArrayEqU8
       end
     end
 
-primitive _WriteBufferIntoReadBuffer
-  fun apply(wb: WriteBuffer, rb: ReadBuffer) ? =>
+primitive _WriterIntoReader
+  fun apply(wb: Writer, rb: Reader) ? =>
     for x in wb.done().values() do
       rb.append(x as Array[U8 val] val)
     end
@@ -90,9 +91,9 @@ class iso _TestVarIntEncoder is UnitTest
                     -0xFEDCA, 0xFEDCA,
                     -0xFEDCA98, 0xFEDCA98].values() do
       try
-        let wb: WriteBuffer ref = WriteBuffer
+        let wb: Writer ref = Writer
         var_int_encoder.encode(control, wb)
-        let rb_wb: ReadBuffer ref = ReadBuffer
+        let rb_wb: Reader ref = Reader
         rb_wb.append((wb.done()(0) as Array[U8 val] val))
         let actual = var_int_decoder.decode(rb_wb) as I64
         h.assert_eq[I64](control, actual,
@@ -122,7 +123,7 @@ class iso _TestVarIntDecoder is UnitTest
                     0xFEDCBA9,
                     0xFEDCBA8].values() do
       try
-        let rb: ReadBuffer ref = ReadBuffer
+        let rb: Reader ref = Reader
         let b0 = control.u8() and 0x7F
         let b1 = (control >> 7).u8() and 0x7F
         let b2 = (control >> 14).u8() and 0x7F
@@ -151,7 +152,7 @@ class iso _TestNullDecoder is UnitTest
   fun name(): String => "avro/NullDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let rb_null = ReadBuffer.append(recover Array[U8 val] end) // nothing
+    let rb_null = Reader.append(recover Array[U8 val] end) // nothing
     let null_decoder = NullDecoder
     h.assert_eq[None](None, null_decoder.decode(rb_null) as None)
 
@@ -159,7 +160,7 @@ class iso _TestBooleanDecoder is UnitTest
   fun name(): String => "avro/BooleanDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let rb_boolean = ReadBuffer.append(recover [as U8: 1, 0] end) // True, False
+    let rb_boolean = Reader.append(recover [as U8: 1, 0] end) // True, False
     let boolean_decoder = BooleanDecoder
     h.assert_eq[Bool](true, boolean_decoder.decode(rb_boolean) as Bool)
     h.assert_eq[Bool](false, boolean_decoder.decode(rb_boolean) as Bool)
@@ -168,7 +169,7 @@ class iso _TestIntDecoder is UnitTest
   fun name(): String => "avro/IntDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let rb_int = ReadBuffer.append(recover [as U8: 0x01] end) // -1
+    let rb_int = Reader.append(recover [as U8: 0x01] end) // -1
     let int_decoder = IntDecoder
     h.assert_eq[I32](-1, int_decoder.decode(rb_int) as I32)
 
@@ -176,7 +177,7 @@ class iso _TestLongDecoder is UnitTest
   fun name(): String => "avro/LongDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let rb_long = ReadBuffer.append(recover [as U8: 0x01] end) // -1
+    let rb_long = Reader.append(recover [as U8: 0x01] end) // -1
     let long_decoder = LongDecoder
     h.assert_eq[I64](-1, long_decoder.decode(rb_long) as I64)
 
@@ -184,9 +185,9 @@ class iso _TestFloatDecoder is UnitTest
   fun name(): String => "avro/FloatDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let wb_float = WriteBuffer
+    let wb_float = Writer
     wb_float.f32_be(3.14159)
-    let rb_float = ReadBuffer.append(wb_float.done()(0) as Array[U8] val)
+    let rb_float = Reader.append(wb_float.done()(0) as Array[U8] val)
     let float_decoder = FloatDecoder
     h.assert_eq[F32](3.14159, float_decoder.decode(rb_float) as F32)
 
@@ -194,9 +195,9 @@ class iso _TestDoubleDecoder is UnitTest
   fun name(): String => "avro/DoubleDecoder"
 
   fun apply(h: TestHelper) ? =>
-    let wb_double = WriteBuffer
+    let wb_double = Writer
     wb_double.f64_be(3.14159)
-    let rb_double = ReadBuffer.append(wb_double.done()(0) as Array[U8] val)
+    let rb_double = Reader.append(wb_double.done()(0) as Array[U8] val)
     let double_decoder = DoubleDecoder
     h.assert_eq[F64](3.14159, double_decoder.decode(rb_double) as F64)
 
@@ -207,7 +208,7 @@ class iso _TestBytesDecoder is UnitTest
     let data = recover [as U8: 0x08, // 4
                                0x0B, 0x0E, // 0x0B 0x0E
                                0x0E, 0x0F] end // 0x0E, 0x0F
-    let rb_bytes = ReadBuffer.append(consume data)
+    let rb_bytes = Reader.append(consume data)
     let bytes_decoder = BytesDecoder
     _AssertArrayEqU8(h, recover [as U8 val: 0x0B, 0x0E, 0x0E, 0x0F] end,
                      bytes_decoder.decode(rb_bytes) as Array[U8 val] val)
@@ -217,7 +218,7 @@ class iso _TestStringDecoder is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x06, 'a', 'b', 'c'] end // "abc"
-    let rb_string = ReadBuffer.append(consume data)
+    let rb_string = Reader.append(consume data)
     let string_decoder = StringDecoder
     h.assert_eq[String]("abc", string_decoder.decode(rb_string) as String)
 
@@ -226,7 +227,7 @@ class iso _TestUnionDecoder is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x02, 0x06, 'a', 'b', 'c'] end // 1, "abc"
-    let rb_union = ReadBuffer.append(consume data)
+    let rb_union = Reader.append(consume data)
     let int_decoder = IntDecoder
     let string_decoder = StringDecoder
     let union_decoder = UnionDecoder([as Decoder: int_decoder, string_decoder])
@@ -239,7 +240,7 @@ class iso _TestRecordDecoder is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x02, 0x06, 'a', 'b', 'c'] end // 1, "abc"
-    let rb_record = ReadBuffer.append(consume data)
+    let rb_record = Reader.append(consume data)
     let int_decoder = IntDecoder
     let string_decoder = StringDecoder
     let record_decoder = RecordDecoder(
@@ -252,7 +253,7 @@ class iso _TestEnumDecoder is UnitTest
   fun name(): String => "avro/EnumDecoder"
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x02] end // 1 (EnumOne)
-    let rb_enum = ReadBuffer.append(consume data)
+    let rb_enum = Reader.append(consume data)
     let enum_zero = EnumSymbol("zero", 0)
     let enum_one = EnumSymbol("one", 1)
     let enum_two = EnumSymbol("two", 2)
@@ -271,7 +272,7 @@ class iso _TestArrayDecoder is UnitTest
                                0x02, // 1 item
                                0x04, 'o', 'x', // "ox"
                                0x00] end  // 0 (end list)
-    let rb_array = ReadBuffer.append(consume data)
+    let rb_array = Reader.append(consume data)
     let string_decoder = StringDecoder
     let array_decoder = ArrayDecoder(string_decoder)
     let array = array_decoder.decode(rb_array) as AvroArray val
@@ -289,7 +290,7 @@ class iso _TestMapDecoder is UnitTest
                                0x02, // 1 item
                                0x04, 'o', 'x', 0x14, // "ox": 10
                                0x00] end  // 0 (end list)
-    let rb_map = ReadBuffer.append(consume data)
+    let rb_map = Reader.append(consume data)
     let long_decoder = LongDecoder
     let map_decoder = MapDecoder(long_decoder)
     let map = map_decoder.decode(rb_map) as AvroMap val
@@ -303,7 +304,7 @@ class iso _TestFixedDecoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x0B, 0x0E, // 0x0B 0x0E
                                0x0E, 0x0F] end // 0x0E, 0x0F
-    let rb_fixed = ReadBuffer.append(consume data)
+    let rb_fixed = Reader.append(consume data)
     let fixed_decoder = FixedDecoder(4)
     _AssertArrayEqU8(h, recover [as U8 val: 0x0B, 0x0E, 0x0E, 0x0F] end,
                      fixed_decoder.decode(rb_fixed) as Array[U8 val] val)
@@ -313,7 +314,7 @@ class iso _TestLookupDecoder is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x06, 'a', 'b', 'c'] end // "abc"
-    let rb_string = ReadBuffer.append(consume data)
+    let rb_string = Reader.append(consume data)
     let decoder_map = Map[String, Decoder]
     let lookup_decoder = LookupDecoder("string", decoder_map)
     let string_decoder = StringDecoder
@@ -325,10 +326,10 @@ class iso _TestForwardDeclarationDecoder is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let data = recover [as U8: 0x06, 'a', 'b', 'c'] end // "abc"
-    let rb_string = ReadBuffer.append(consume data)
+    let rb_string = Reader.append(consume data)
     let forward_declaration_decoder = ForwardDeclarationDecoder
     let string_decoder = StringDecoder
-    
+
     forward_declaration_decoder.set_body(string_decoder)
     h.assert_eq[String]("abc",
                         forward_declaration_decoder.decode(rb_string) as String)
@@ -339,8 +340,8 @@ class iso _TestNullEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let null_encoder = NullEncoder
     let null_decoder = NullDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected = None
 
     null_encoder.encode(expected, wb)
@@ -353,8 +354,8 @@ class iso _TestBooleanEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let boolean_encoder = BooleanEncoder
     let boolean_decoder = BooleanDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected = true
 
     boolean_encoder.encode(expected, wb)
@@ -368,8 +369,8 @@ class iso _TestIntEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let int_encoder = IntEncoder
     let int_decoder = IntDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: I32 = 3000
 
     int_encoder.encode(expected, wb)
@@ -383,8 +384,8 @@ class iso _TestLongEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let long_encoder = LongEncoder
     let long_decoder = LongDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: I64 = 3000
 
     long_encoder.encode(expected, wb)
@@ -398,8 +399,8 @@ class iso _TestFloatEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let float_encoder = FloatEncoder
     let float_decoder = FloatDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: F32 = 3.14159
 
     float_encoder.encode(expected, wb)
@@ -413,8 +414,8 @@ class iso _TestDoubleEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let double_encoder = DoubleEncoder
     let double_decoder = DoubleDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: F64 = 314159.314159
 
     double_encoder.encode(expected, wb)
@@ -428,8 +429,8 @@ class iso _TestBytesEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let bytes_encoder = BytesEncoder
     let bytes_decoder = BytesDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: Array[U8 val] val = recover
       [as U8 val: 0xDE, 0xAD, 0xBE, 0xEF] end
 
@@ -446,8 +447,8 @@ class iso _TestStringEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let string_encoder = StringEncoder
     let string_decoder = StringDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: String = "hello world\nbye"
 
     string_encoder.encode(expected, wb)
@@ -467,8 +468,8 @@ class iso _TestUnionEncoder is UnitTest
     let int_decoder = IntDecoder
     let string_decoder = StringDecoder
     let union_decoder = UnionDecoder([as Decoder: int_decoder, string_decoder])
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: Union val = recover Union(1, "hello world") end
 
     union_encoder.encode(expected, wb)
@@ -489,8 +490,8 @@ class iso _TestRecordEncoder is UnitTest
     let int_decoder = IntDecoder
     let str_decoder = StringDecoder
     let record_decoder = RecordDecoder([as Decoder: int_decoder, str_decoder])
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: Record val = recover Record(recover
       [as AvroType: I32(42), "meaning of life"] end) end
 
@@ -515,8 +516,8 @@ class iso _TestEnumEncoder is UnitTest
     end
     let enum_encoder = EnumEncoder(symbols)
     let enum_decoder = EnumDecoder(symbols)
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected = enum_one
 
     enum_encoder.encode(expected, wb)
@@ -534,8 +535,8 @@ class iso _TestArrayEncoder is UnitTest
     let string_decoder = StringDecoder
     let array_encoder = ArrayEncoder(string_encoder)
     let array_decoder = ArrayDecoder(string_decoder)
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: AvroArray val = recover
       AvroArray(recover [as AvroType: "a", "b", "c"] end)
     end
@@ -558,8 +559,8 @@ class iso _TestMapEncoder is UnitTest
     let string_decoder = StringDecoder
     let map_encoder = MapEncoder(string_encoder)
     let map_decoder = MapDecoder(string_decoder)
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: AvroMap val = recover
       AvroMap(recover
         let map = recover Map[String val, AvroType val] end
@@ -585,8 +586,8 @@ class iso _TestFixedEncoder is UnitTest
   fun apply(h: TestHelper) ? =>
     let fixed_encoder = FixedEncoder(4)
     let fixed_decoder = FixedDecoder(4)
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
 
     let expected: Array[U8 val] val = recover
       [as U8 val: 0xDE, 0xAD, 0xBE, 0xEF] end
@@ -607,12 +608,12 @@ class iso _TestLookupEncoder is UnitTest
     encoder_map("string") = StringEncoder
     let lookup_encoder = LookupEncoder("string", encoder_map)
     let string_decoder = StringDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: String = "hello world\nbye"
 
     lookup_encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = string_decoder.decode(rb) as String val
     h.assert_eq[String](expected, actual)
 
@@ -624,12 +625,12 @@ class iso _TestForwardDeclarationEncoder is UnitTest
     let forward_declaration_encoder = ForwardDeclarationEncoder
     forward_declaration_encoder.set_body(string_encoder)
     let string_decoder = StringDecoder
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     let expected: String = "hello world\nbye"
 
     forward_declaration_encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = string_decoder.decode(rb) as String val
     h.assert_eq[String](expected, actual)
 
@@ -660,10 +661,10 @@ class iso _TestRecursiveLookupEncoderDecoder is UnitTest
 
     let expected: AvroType val = rn.make_first_node("hi", rn.make_node("there",
       rn.make_null_node()))
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     node_encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = node_decoder.decode(rb) as Record val
     h.assert_eq[String](rn.get_node(expected, 0) as String,
                         rn.get_node(actual, 0) as String)
@@ -697,10 +698,10 @@ class iso _TestRecursiveForwardDeclarationEncoderDecoder is UnitTest
 
     let expected: AvroType val = rn.make_first_node("hi", rn.make_node("there",
       rn.make_null_node()))
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     node_encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = node_decoder.decode(rb) as Record val
     h.assert_eq[String](rn.get_node(expected, 0) as String,
                         rn.get_node(actual, 0) as String)
@@ -760,11 +761,11 @@ class iso _TestSchema is UnitTest
 
       let encoder = schema.encoder()
       let decoder = schema.decoder()
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
+      let wb: Writer ref = Writer
+      let rb: Reader ref = Reader
       let expected = "hi there"
       encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
+      _WriterIntoReader(wb, rb)
       let actual = decoder.decode(rb)
       h.assert_eq[String](expected, actual as String)
     else
@@ -779,12 +780,12 @@ class iso _TestSchema is UnitTest
 
       let encoder = schema.encoder()
       let decoder = schema.decoder()
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
+      let wb: Writer ref = Writer
+      let rb: Reader ref = Reader
       let expected: Union val = recover Union(1, "hello world") end
 
       encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
+      _WriterIntoReader(wb, rb)
       let actual = decoder.decode(rb) as Union val
       h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
       h.assert_eq[String](expected.data as String val, actual.data as String val)
@@ -816,10 +817,10 @@ class iso _TestRecursiveSchema is UnitTest
     let rn = _RecursiveNode
     let expected: AvroType val = rn.make_first_node("hi", rn.make_node("there",
       rn.make_null_node()))
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as Record val
     h.assert_eq[String](rn.get_node(expected, 0) as String,
                         rn.get_node(actual, 0) as String)
@@ -834,7 +835,7 @@ class iso _TestPrimitiveSchema is UnitTest
   fun apply(h: TestHelper) ? =>
     let schema_str = """
       {
-        "type": "record", 
+        "type": "record",
         "name": "Primitives",
         "fields" : [
           {"name": "theNull", "type": "null"},
@@ -854,16 +855,16 @@ class iso _TestPrimitiveSchema is UnitTest
     let decoder = schema.decoder()
 
     let expected: Record val = recover
-      Record(recover [as AvroType val: None, true, I32(15), I64(50823), 
+      Record(recover [as AvroType val: None, true, I32(15), I64(50823),
                                        F32(13.2), F64(3.14159),
                                        recover [as U8: 0xBE, 0xEF] end,
                                        "hello world"] end)
     end
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as Record val
 
     h.assert_eq[None](expected(0) as None, actual(0) as None)
@@ -904,8 +905,8 @@ class iso _TestSchemaRecord is UnitTest
         h.fail("couldn't get decoder")
         error
       end
-      let wb: WriteBuffer ref = WriteBuffer
-      let rb: ReadBuffer ref = ReadBuffer
+      let wb: Writer ref = Writer
+      let rb: Reader ref = Reader
       let expected: Record val = recover
         Record(recover
           [as AvroType: "Andrew",
@@ -915,7 +916,7 @@ class iso _TestSchemaRecord is UnitTest
       end
 
       encoder.encode(expected, wb)
-      _WriteBufferIntoReadBuffer(wb, rb)
+      _WriterIntoReader(wb, rb)
 
       let actual = decoder.decode(rb) as Record val
       h.assert_eq[USize](expected.size() as USize, actual.size() as USize)
@@ -947,7 +948,7 @@ class iso _TestSchemaEnum is UnitTest
   fun apply(h: TestHelper) ? =>
     let schema_str = """
     {
-      "type": "enum", 
+      "type": "enum",
       "name": "Colors",
       "symbols" : ["RED", "GREEN", "BLUE"]
     }
@@ -959,10 +960,10 @@ class iso _TestSchemaEnum is UnitTest
 
     let expected = EnumSymbol("GREEN", 1)
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as EnumSymbol val
 
     h.assert_eq[EnumSymbol val](expected, actual)
@@ -986,10 +987,10 @@ class iso _TestSchemaArray is UnitTest
       AvroArray(recover [as AvroType: "a", "b", "c"] end)
     end
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
 
     let actual = decoder.decode(rb) as AvroArray val
     h.assert_eq[USize](expected.size(), actual.size())
@@ -1022,10 +1023,10 @@ class iso _TestSchemaMap is UnitTest
       end)
     end
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as AvroMap val
 
     h.assert_eq[USize](expected.size(), actual.size())
@@ -1047,10 +1048,10 @@ class iso _TestSchemaUnion is UnitTest
 
     let expected: Union val = recover Union(1, "hello world") end
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as Union val
 
     h.assert_eq[USize](expected.selection as USize, actual.selection as USize)
@@ -1075,9 +1076,9 @@ class iso _TestSchemaFixed is UnitTest
     let expected: Array[U8 val] val = recover
       [as U8 val: 0xDE, 0xAD, 0xBE, 0xEF] end
 
-    let wb: WriteBuffer ref = WriteBuffer
-    let rb: ReadBuffer ref = ReadBuffer
+    let wb: Writer ref = Writer
+    let rb: Reader ref = Reader
     encoder.encode(expected, wb)
-    _WriteBufferIntoReadBuffer(wb, rb)
+    _WriterIntoReader(wb, rb)
     let actual = decoder.decode(rb) as Array[U8] val
     _AssertArrayEqU8(h, expected, actual)
