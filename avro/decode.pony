@@ -1,26 +1,27 @@
 use "net"
 use "collections"
 use "debug"
+use "buffered"
 
 interface Decoder
-  fun ref decode(buffer: ReadBuffer): AvroType val ?
+  fun ref decode(buffer: Reader): AvroType val ?
 
 class NullDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val =>
+  fun ref decode(buffer: Reader): AvroType val =>
     None
 
 class BooleanDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     buffer.u8() != 0
 
 class _VarIntDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     var acc: I64 = 0
     var shift: I64 = 0
 
@@ -45,40 +46,40 @@ class IntDecoder is Decoder
   let _var_int_decoder: _VarIntDecoder = _VarIntDecoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     (_var_int_decoder.decode(buffer) as I64).i32()
 
 class LongDecoder is Decoder
   let _var_int_decoder: _VarIntDecoder = _VarIntDecoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     _var_int_decoder.decode(buffer) as I64
 
 class FloatDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     buffer.f32_be()
 
 class DoubleDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     buffer.f64_be()
 
 class BytesDecoder is Decoder
   let _long_decoder: LongDecoder = LongDecoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let len = (_long_decoder.decode(buffer) as I64).usize()
     buffer.block(len)
 
 class StringDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let len = (LongDecoder.decode(buffer) as I64).usize()
     let b = buffer.block(len)
     String.from_array(consume b)
@@ -87,7 +88,7 @@ class UnionDecoder is Decoder
   let _decoders: Array[Decoder]
   new ref create(decoders: Array[Decoder]) =>
     _decoders = decoders
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let opt = (LongDecoder.decode(buffer) as I64).usize()
     let data = _decoders(opt).decode(buffer)
     recover Union(opt, data) end
@@ -96,7 +97,7 @@ class RecordDecoder is Decoder
   let _decoders: Array[Decoder]
   new ref create(decoders: Array[Decoder]) =>
     _decoders = decoders
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let record: Array[AvroType val] iso = recover Array[AvroType val] end
     for decoder in _decoders.values() do
        record.push(decoder.decode(buffer))
@@ -108,7 +109,7 @@ class EnumDecoder is Decoder
   let _enum_symbols: Array[EnumSymbol val] val
   new ref create(enum_symbols: Array[EnumSymbol val] val) =>
     _enum_symbols = enum_symbols
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let idx = (_long_decoder.decode(buffer) as I64).usize()
     _enum_symbols(idx)
 
@@ -117,7 +118,7 @@ class ArrayDecoder is Decoder
   let _decoder: Decoder
   new ref create(decoder: Decoder) =>
     _decoder = decoder
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let array = recover Array[AvroType val] end
     while true do
       let len = _long_decoder.decode(buffer) as I64
@@ -142,7 +143,7 @@ class MapDecoder is Decoder
   let _decoder: Decoder
   new ref create(decoder: Decoder) =>
     _decoder = decoder
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     let sd: StringDecoder ref = StringDecoder
     let map = recover Map[String val, AvroType val] end
     while true do
@@ -171,7 +172,7 @@ class FixedDecoder is Decoder
   let _len: USize
   new ref create(len: USize) =>
     _len = len
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     buffer.block(_len)
 
 class LookupDecoder is Decoder
@@ -180,13 +181,13 @@ class LookupDecoder is Decoder
   new ref create(type_string: String, decoder_map: Map[String, Decoder]) =>
     _type_string = type_string
     _decoder_map = decoder_map
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     _decoder_map(_type_string).decode(buffer)
 
 class _BogusDecoder is Decoder
   new ref create() =>
     None
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     error
 
 class ForwardDeclarationDecoder is Decoder
@@ -195,5 +196,5 @@ class ForwardDeclarationDecoder is Decoder
     None
   fun ref set_body(decoder: Decoder) =>
     _decoder = decoder
-  fun ref decode(buffer: ReadBuffer): AvroType val ? =>
+  fun ref decode(buffer: Reader): AvroType val ? =>
     _decoder.decode(buffer)

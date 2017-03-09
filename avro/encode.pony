@@ -1,25 +1,26 @@
 use "net"
 use "collections"
+use "buffered"
 
 interface Encoder
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ?
+  fun ref encode(obj: AvroType val, buffer: Writer) ?
 
 class NullEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) =>
+  fun ref encode(obj: AvroType val, buffer: Writer) =>
     None
 
 class BooleanEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     buffer.u8(if (obj as Bool) then 1 else 0 end)
 
 class _VarIntEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let long = obj as I64
 
     var remaining = (if long >= 0 then long else (not long) end) << 1
@@ -38,33 +39,33 @@ class IntEncoder is Encoder
   let _var_int_encoder: _VarIntEncoder = _VarIntEncoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     _var_int_encoder.encode((obj as I32).i64(), buffer)
 
 class LongEncoder is Encoder
   let _var_int_encoder: _VarIntEncoder = _VarIntEncoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     _var_int_encoder.encode(obj as I64, buffer)
 
 class FloatEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     buffer.f32_be(obj as F32)
 
 class DoubleEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     buffer.f64_be(obj as F64)
 
 class BytesEncoder is Encoder
   let _long_encoder: LongEncoder = LongEncoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let data = obj as Array[U8 val] val
     _long_encoder.encode(data.size().i64(), buffer)
     buffer.write(data)
@@ -73,7 +74,7 @@ class StringEncoder is Encoder
   let _long_encoder: LongEncoder = LongEncoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let data = obj as String
     _long_encoder.encode(data.size().i64(), buffer)
     buffer.write(data.array())
@@ -83,7 +84,7 @@ class UnionEncoder is Encoder
   let _encoders: Array[Encoder]
   new ref create(encoders: Array[Encoder]) =>
     _encoders = encoders
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let union = obj as Union val
     let selection = union.selection
     _long_encoder.encode(selection.i64(), buffer)
@@ -93,7 +94,7 @@ class RecordEncoder is Encoder
   let _encoders: Array[Encoder]
   new ref create(encoders: Array[Encoder]) =>
     _encoders = encoders
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let record = obj as Record val
     for (idx, encoder) in _encoders.pairs() do
       encoder.encode(record(idx), buffer)
@@ -104,7 +105,7 @@ class EnumEncoder is Encoder
   let _symbols: Array[EnumSymbol val] val
   new ref create(symbols: Array[EnumSymbol val] val) =>
     _symbols = symbols
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let symbol = obj as EnumSymbol val
     _long_encoder.encode(symbol.id.i64(), buffer)
 
@@ -115,7 +116,7 @@ class ArrayEncoder is Encoder
   let _encoder: Encoder
   new ref create(encoder: Encoder) =>
     _encoder = encoder
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let array = obj as AvroArray val
     _long_encoder.encode(array.size().i64(), buffer)
     for idx in Range(0, array.size()) do
@@ -131,7 +132,7 @@ class MapEncoder is Encoder
   let _encoder: Encoder
   new ref create(encoder: Encoder) =>
     _encoder = encoder
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let map = obj as AvroMap val
     _long_encoder.encode(map.size().i64(), buffer)
     for (k, v) in map.pairs() do
@@ -144,7 +145,7 @@ class FixedEncoder is Encoder
   let _len: USize
   new ref create(len: USize) =>
     _len = len
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     let data = obj as Array[U8 val] val
     if data.size() != _len then error end
     buffer.write(data)
@@ -155,13 +156,13 @@ class LookupEncoder is Encoder
   new ref create(type_string: String, map: Map[String, Encoder]) =>
     _type_string = type_string
     _encoder_map = map
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     _encoder_map(_type_string).encode(obj, buffer)
 
 class _BogusEncoder is Encoder
   new ref create() =>
     None
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     error
 
 class ForwardDeclarationEncoder is Encoder
@@ -170,5 +171,5 @@ class ForwardDeclarationEncoder is Encoder
     None
   fun ref set_body(encoder: Encoder) =>
     _encoder = encoder
-  fun ref encode(obj: AvroType val, buffer: WriteBuffer) ? =>
+  fun ref encode(obj: AvroType val, buffer: Writer) ? =>
     _encoder.encode(obj, buffer)

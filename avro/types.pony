@@ -1,4 +1,5 @@
 use "collections"
+use "format"
 
 type AvroType is (None | Bool | I32 | I64 | F32 | F64 | Array[U8 val] val |
                   String | Record val | EnumSymbol val | AvroArray val |
@@ -12,8 +13,8 @@ class EnumSymbol is (Equatable[EnumSymbol] & Stringable)
     id = id'
   fun eq(that: box->EnumSymbol): Bool =>
     (name == that.name) and (id == that.id)
-  fun string(fmt: FormatSettings = FormatSettingsDefault): String iso^ =>
-    (name + "(" + id.string() + ")").string(fmt)
+  fun string(): String iso^ =>
+    (name + "(" + id.string() + ")").string()
 
 class Union
   let selection: USize
